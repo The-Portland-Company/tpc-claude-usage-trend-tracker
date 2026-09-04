@@ -1,5 +1,5 @@
 import XCTest
-@testable import ClaudeMeter
+@testable import ClaudeUsageTrendTracker
 
 final class PaceMathTests: XCTestCase {
     let iso = ISO8601DateFormatter()

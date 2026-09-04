@@ -17,7 +17,7 @@
     <key>provisioningProfiles</key>
     <dict>
         <key>com.theportlandcompany.ClaudeMeter</key>
-        <string>Claude Meter Mac App Store</string>
+        <string>Claude Usage Trend Tracker Mac App Store</string>
     </dict>
     <key>uploadSymbols</key>
     <false/>

@@ -1,6 +1,6 @@
-# Installing Claude Meter
+# Installing Claude Usage Trend Tracker
 
-Claude Meter is a menu bar app that shows your Claude Code plan usage (the same
+Claude Usage Trend Tracker is a menu bar app that shows your Claude Code plan usage (the same
 bars `/usage` shows) and warns you when your pace will hit a limit before it
 resets.
 
@@ -11,11 +11,11 @@ scripts/build-local.sh
 ```
 
 That builds a Release app signed with the Apple Development certificate, copies
-it to `/Applications/Claude Meter.app`, and launches it.
+it to `/Applications/Claude Usage Trend Tracker.app`, and launches it.
 
 ## First launch
 
-1. **Keychain prompt** — "Claude Meter wants to use your confidential information
+1. **Keychain prompt** — "Claude Usage Trend Tracker wants to use your confidential information
    stored in Claude Code-credentials". Click **Always Allow**. The app reads the
    sign-in token Claude Code already stores; it never writes to Keychain and never
    refreshes the token itself.
@@ -46,13 +46,13 @@ now, extended to the reset.
 ## If the numbers stop updating
 
 Claude Code refreshes the sign-in token whenever it runs; the token lasts about
-8 hours. If you have not used Claude Code for longer than that, Claude Meter
+8 hours. If you have not used Claude Code for longer than that, Claude Usage Trend Tracker
 shows the last good reading with a yellow "stale" banner. Open any Claude Code
 session and the next poll (every 5 minutes, or click Refresh) catches up.
 
 ## Debug switches
 
-- `CLAUDE_METER_PACE_SCALE=5` — multiply percents before projecting, to force
+- `CLAUDE_USAGE_TREND_TRACKER_PACE_SCALE=5` — multiply percents before projecting, to force
   the over-pace notification for testing.
 
 ## Distribution to other Macs

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build Claude Meter locally (Release, Apple Development signing) and install it
+# Build Claude Usage Trend Tracker locally (Release, Apple Development signing) and install it
 # to /Applications.
 #
 #   scripts/build-local.sh              # build + install + relaunch
@@ -21,19 +21,19 @@ for arg in "$@"; do
   esac
 done
 
-SCHEME="ClaudeMeter"
+SCHEME="ClaudeUsageTrendTracker"
 CONFIG="Release"
 DERIVED="$ROOT/build/DerivedData"
-INSTALL_PATH="/Applications/Claude Meter.app"
+INSTALL_PATH="/Applications/Claude Usage Trend Tracker.app"
 SIGNING_IDENTITY="${SIGNING_IDENTITY:-Apple Development}"
-ENTITLEMENTS="${ENTITLEMENTS:-Sources/ClaudeMeter.entitlements}"
+ENTITLEMENTS="${ENTITLEMENTS:-Sources/ClaudeUsageTrendTracker.entitlements}"
 
 echo "==> xcodegen generate"
 xcodegen generate
 
 echo "==> xcodebuild ($CONFIG, identity: $SIGNING_IDENTITY)"
 xcodebuild \
-  -project ClaudeMeter.xcodeproj \
+  -project ClaudeUsageTrendTracker.xcodeproj \
   -scheme "$SCHEME" \
   -configuration "$CONFIG" \
   -destination 'platform=macOS' \
@@ -59,11 +59,11 @@ if [[ "$INSTALL" -eq 1 ]]; then
   echo "==> installing to $INSTALL_PATH"
   ditto "$APP" "$INSTALL_PATH"
   echo "==> relaunching"
-  pkill -x "Claude Meter" || true
+  pkill -x "Claude Usage Trend Tracker" || true
   sleep 1
   open "$INSTALL_PATH"
   sleep 1
-  PID="$(pgrep -x "Claude Meter" || true)"
+  PID="$(pgrep -x "Claude Usage Trend Tracker" || true)"
   echo "Installed: $INSTALL_PATH (pid ${PID:-unknown})"
 else
   echo "Built (not installed): $APP"

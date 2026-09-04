@@ -1,4 +1,4 @@
-# Releasing Claude Meter
+# Releasing Claude Usage Trend Tracker
 
 Two scripts. Both regenerate the Xcode project with XcodeGen first, so run them
 from anywhere in the repo.
@@ -10,7 +10,7 @@ scripts/build-local.sh              # build, copy to /Applications, relaunch
 scripts/build-local.sh --no-install # build only
 ```
 
-The app is installed as `/Applications/Claude Meter.app`. The script kills any
+The app is installed as `/Applications/Claude Usage Trend Tracker.app`. The script kills any
 running copy, waits a second, reopens the installed bundle and prints its pid,
 so you are always looking at the build you just made.
 
@@ -20,7 +20,7 @@ so you are always looking at the build you just made.
 scripts/build-release.sh
 ```
 
-Produces `dist/ClaudeMeter-<version>.dmg` containing the app and an
+Produces `dist/ClaudeUsageTrendTracker-<version>.dmg` containing the app and an
 `/Applications` shortcut. The version comes from `MARKETING_VERSION` in
 `project.yml`.
 
@@ -47,7 +47,7 @@ A human has to do these once. They cannot be automated.
 4. Save notarization credentials into the keychain:
 
 ```
-xcrun notarytool store-credentials claude-meter-notary \
+xcrun notarytool store-credentials claude-usage-trend-tracker-notary \
   --apple-id <your-apple-id> \
   --team-id VP38993WK6 \
   --password <app-specific-password>
@@ -62,4 +62,4 @@ SIGNING_IDENTITY="Developer ID Application" scripts/build-release.sh
 That path exports through `ExportOptions-developer-id.plist`, submits to
 `notarytool --wait`, staples the ticket, and writes the DMG. Set
 `NOTARY_PROFILE` if the keychain profile is named something other than
-`claude-meter-notary`.
+`claude-usage-trend-tracker-notary`.

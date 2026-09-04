@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Archive and package Claude Meter as a DMG.
+# Archive and package Claude Usage Trend Tracker as a DMG.
 #
 #   scripts/build-release.sh
 #   SIGNING_IDENTITY="Developer ID Application" scripts/build-release.sh
@@ -14,13 +14,13 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
-SCHEME="ClaudeMeter"
+SCHEME="ClaudeUsageTrendTracker"
 CONFIG="Release"
 SIGNING_IDENTITY="${SIGNING_IDENTITY:-Apple Development}"
-NOTARY_PROFILE="${NOTARY_PROFILE:-claude-meter-notary}"
-ENTITLEMENTS="${ENTITLEMENTS:-Sources/ClaudeMeter.entitlements}"
+NOTARY_PROFILE="${NOTARY_PROFILE:-claude-usage-trend-tracker-notary}"
+ENTITLEMENTS="${ENTITLEMENTS:-Sources/ClaudeUsageTrendTracker.entitlements}"
 BUILD="$ROOT/build"
-ARCHIVE="$BUILD/ClaudeMeter.xcarchive"
+ARCHIVE="$BUILD/ClaudeUsageTrendTracker.xcarchive"
 EXPORT_DIR="$BUILD/export"
 DIST="$ROOT/dist"
 
@@ -41,7 +41,7 @@ mkdir -p "$BUILD" "$DIST"
 
 echo "==> xcodebuild archive (identity: $SIGNING_IDENTITY, version: $VERSION)"
 xcodebuild \
-  -project ClaudeMeter.xcodeproj \
+  -project ClaudeUsageTrendTracker.xcodeproj \
   -scheme "$SCHEME" \
   -configuration "$CONFIG" \
   -destination 'platform=macOS' \
@@ -94,7 +94,7 @@ else
   echo
 fi
 
-DMG="$DIST/ClaudeMeter-$VERSION.dmg"
+DMG="$DIST/ClaudeUsageTrendTracker-$VERSION.dmg"
 STAGE="$BUILD/dmg-stage"
 rm -rf "$STAGE"
 rm -f "$DMG"
@@ -103,7 +103,7 @@ ditto "$APP" "$STAGE/$(basename "$APP")"
 ln -s /Applications "$STAGE/Applications"
 
 echo "==> hdiutil create"
-hdiutil create -volname "Claude Meter $VERSION" \
+hdiutil create -volname "Claude Usage Trend Tracker $VERSION" \
   -srcfolder "$STAGE" -ov -format UDZO "$DMG"
 
 echo

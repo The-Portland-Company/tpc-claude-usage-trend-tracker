@@ -3,3 +3,4 @@ DerivedData/
 dist/
 *.xcodeproj
 .DS_Store
+appstore-screenshots/raw/

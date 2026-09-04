@@ -42,7 +42,7 @@ struct PopoverView: View {
 
     private var header: some View {
         HStack {
-            Text("Claude Meter").font(.system(size: 13, weight: .semibold))
+            Text("Claude Usage Trend Tracker").font(.system(size: 13, weight: .semibold))
             Spacer()
             Text(updatedText)
                 .font(.system(size: 10))

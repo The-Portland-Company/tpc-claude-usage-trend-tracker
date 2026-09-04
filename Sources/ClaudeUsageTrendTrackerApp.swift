@@ -1,7 +1,7 @@
 import SwiftUI
 
 @main
-struct ClaudeMeterApp: App {
+struct ClaudeUsageTrendTrackerApp: App {
     @State private var model = UsageModel()
     @State private var started = false
 

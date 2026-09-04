@@ -62,7 +62,7 @@ final class UsageModel {
     private var lastSnapshot: UsageSnapshot?
     private var staleNotified = false
     private let pollInterval: TimeInterval = 5 * 60
-    private let paceScale: Double = Double(ProcessInfo.processInfo.environment["CLAUDE_METER_PACE_SCALE"] ?? "") ?? 1
+    private let paceScale: Double = Double(ProcessInfo.processInfo.environment["CLAUDE_USAGE_TREND_TRACKER_PACE_SCALE"] ?? "") ?? 1
 
     init(client: UsageClient = UsageClient(), notifier: Notifying = Notifier(), history: HistoryStore = HistoryStore()) {
         self.client = client
@@ -113,8 +113,8 @@ final class UsageModel {
             lastError = Self.describe(error)
             if let good = lastGoodAt, now.timeIntervalSince(good) > 2 * 3600, !staleNotified {
                 staleNotified = true
-                notifier.post(id: "stale", title: "Claude Meter data is stale",
-                              body: "Open Claude Code once so it refreshes your sign-in, then Claude Meter will catch up.")
+                notifier.post(id: "stale", title: "Claude Usage Trend Tracker data is stale",
+                              body: "Open Claude Code once so it refreshes your sign-in, then Claude Usage Trend Tracker will catch up.")
             }
             if let snap = lastSnapshot { rebuild(from: snap, now: now) }
         }
@@ -187,7 +187,7 @@ final class HistoryStore {
 
     init(directory: URL? = nil) {
         let dir = directory ?? FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("Claude Meter", isDirectory: true)
+            .appendingPathComponent("Claude Usage Trend Tracker", isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         url = dir.appendingPathComponent("history.json")
         if let d = try? Data(contentsOf: url), let s = try? JSONDecoder.usage.decode([Sample].self, from: d) { samples = s }

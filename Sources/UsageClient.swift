@@ -129,7 +129,7 @@ final class UsageClient {
 
     private let session: URLSession
     static let endpoint = URL(string: "https://api.anthropic.com/api/oauth/usage")!
-    static let userAgent = "ClaudeMeter/0.1.0"
+    static let userAgent = "ClaudeUsageTrendTracker/1.0"
 
     init(session: URLSession = .shared) {
         self.session = session
