@@ -26,10 +26,19 @@ final class UsageModel {
     private(set) var isRefreshing = false
     /// True when we could not fetch and are showing the last good snapshot.
     var isStale: Bool { lastError != nil && lastGoodAt != nil }
+    /// Last known weekly-all percent. A poll that momentarily lacks the weekly
+    /// bucket must never make the menu bar jump to a different window (that was
+    /// the "6% vs 24%" flip between the weekly and 5-hour limits).
+    private(set) var lastWeeklyPercent: Double?
     var menuTitle: String {
-        guard let p = buckets.first(where: { $0.isPrimary }) ?? buckets.first else { return "–" }
-        return "\(Int(p.percent.rounded()))% \(p.trend.rawValue)"
+        if let w = buckets.first(where: { $0.kind == "weekly_all" }) {
+            return "\(Int(w.percent.rounded()))% \(w.trend.rawValue)"
+        }
+        if let p = lastWeeklyPercent { return "\(Int(p.rounded()))%" }
+        return "–"
     }
+    /// The Claude account whose usage is being read (from /oauth/profile).
+    private(set) var account: String?
     var menuSeverity: PaceMath.Severity { buckets.map(\.severity).max() ?? .normal }
     var verdict: String {
         guard let w = buckets.first(where: { $0.kind == "weekly_all" }), let r = w.resetsAt else {
@@ -92,6 +101,10 @@ final class UsageModel {
         if isRefreshing { return }
         isRefreshing = true
         defer { isRefreshing = false }
+        if account == nil { account = defaults.string(forKey: "account") }
+        if account == nil, let a = await client.fetchAccount() {
+            account = a; defaults.set(a, forKey: "account")
+        }
         let now = Date()
         do {
             var snap = try await client.fetch()
@@ -133,6 +146,7 @@ final class UsageModel {
                               isPrimary: l.kind == "weekly_all")
         }
         extraUsage = snap.extraUsage
+        if let w = buckets.first(where: { $0.kind == "weekly_all" }) { lastWeeklyPercent = w.percent }
     }
 
     private func planNotifications(new: UsageSnapshot, previous: UsageSnapshot?, now: Date) {

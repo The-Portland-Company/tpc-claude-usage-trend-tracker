@@ -41,13 +41,20 @@ struct PopoverView: View {
     // MARK: Header
 
     private var header: some View {
-        HStack {
-            Text("Claude Usage Trend Tracker").font(.system(size: 13, weight: .semibold))
-            Spacer()
-            Text(updatedText)
+        VStack(alignment: .leading, spacing: 2) {
+            HStack {
+                Text("Claude Usage Trend Tracker").font(.system(size: 13, weight: .semibold))
+                Spacer()
+                Text(updatedText)
+                    .font(.system(size: 10))
+                    .foregroundStyle(.secondary)
+                refreshButton
+            }
+            Text(model.account.map { "Checking " + $0 } ?? "Checking Claude Code sign-in")
                 .font(.system(size: 10))
                 .foregroundStyle(.secondary)
-            refreshButton
+                .lineLimit(1)
+                .truncationMode(.middle)
         }
     }
 
