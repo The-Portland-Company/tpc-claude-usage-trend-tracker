@@ -137,7 +137,11 @@ final class UsageClient {
 
     func fetch() async throws -> UsageSnapshot {
         let (token, _) = try CredentialStore.readAccessToken()
+        return try await fetch(token: token)
+    }
 
+    /// Fetch usage for an explicit access token (multi-account).
+    func fetch(token: String) async throws -> UsageSnapshot {
         var request = URLRequest(url: Self.endpoint)
         request.httpMethod = "GET"
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
@@ -163,6 +167,11 @@ final class UsageClient {
     /// Best-effort account email from /oauth/profile. Never throws.
     func fetchAccount() async -> String? {
         guard let (token, _) = try? CredentialStore.readAccessToken() else { return nil }
+        return await fetchAccount(token: token)
+    }
+
+    /// Best-effort account email for an explicit token. Never throws.
+    func fetchAccount(token: String) async -> String? {
         var request = URLRequest(url: Self.profileEndpoint)
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         request.setValue("oauth-2025-04-20", forHTTPHeaderField: "anthropic-beta")

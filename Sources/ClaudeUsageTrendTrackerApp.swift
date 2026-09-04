@@ -20,5 +20,10 @@ struct ClaudeUsageTrendTrackerApp: App {
             .foregroundStyle(tint)
         }
         .menuBarExtraStyle(.window)
+
+        Window("Settings", id: "settings") {
+            SettingsView(model: model)
+        }
+        .windowResizability(.contentSize)
     }
 }
