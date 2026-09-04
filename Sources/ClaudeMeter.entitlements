@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Deliberately NOT sandboxed: the app reads Claude Code's Keychain item
+	     ("Claude Code-credentials"), which the sandbox would block. Hardened
+	     runtime is on (see ENABLE_HARDENED_RUNTIME in project.yml); no
+	     hardened-runtime exceptions are needed. -->
+</dict>
+</plist>

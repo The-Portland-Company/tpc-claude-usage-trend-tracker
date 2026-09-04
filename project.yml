@@ -1,0 +1,85 @@
+name: ClaudeMeter
+
+options:
+  bundleIdPrefix: com.theportlandcompany
+
+configs:
+  Debug: debug
+  Release: release
+
+settings:
+  base:
+    SWIFT_VERSION: "5.9"
+    MACOSX_DEPLOYMENT_TARGET: "14.0"
+    CURRENT_PROJECT_VERSION: "1"
+    MARKETING_VERSION: "0.1.0"
+
+targets:
+  ClaudeMeter:
+    type: application
+    platform: macOS
+    sources:
+      - path: Sources
+        excludes:
+          - "Info.plist"
+          - "ClaudeMeter.entitlements"
+    settings:
+      base:
+        PRODUCT_NAME: "Claude Meter"
+        # PRODUCT_NAME has a space; pin the Swift module name so tests can
+        # `@testable import ClaudeMeter` rather than `Claude_Meter`.
+        PRODUCT_MODULE_NAME: ClaudeMeter
+        PRODUCT_BUNDLE_IDENTIFIER: com.theportlandcompany.ClaudeMeter
+        GENERATE_INFOPLIST_FILE: NO
+        INFOPLIST_FILE: Sources/Info.plist
+        CODE_SIGN_ENTITLEMENTS: Sources/ClaudeMeter.entitlements
+        CODE_SIGN_STYLE: Automatic
+        DEVELOPMENT_TEAM: VP38993WK6
+        ENABLE_HARDENED_RUNTIME: YES
+        ENABLE_APP_SANDBOX: NO
+      configs:
+        Debug:
+          CODE_SIGN_IDENTITY: "Apple Development"
+          SWIFT_ACTIVE_COMPILATION_CONDITIONS: "DEBUG"
+        Release:
+          # Defaults to Apple Development (the only cert on this Mac today).
+          # Override at the command line for a public build, ex:
+          #   xcodebuild CODE_SIGN_IDENTITY="Developer ID Application" ...
+          CODE_SIGN_IDENTITY: "Apple Development"
+
+  ClaudeMeterTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - path: Tests
+        excludes:
+          - "Fixtures"
+      - path: Tests/Fixtures
+        buildPhase: resources
+    dependencies:
+      - target: ClaudeMeter
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.theportlandcompany.ClaudeMeter.tests
+        GENERATE_INFOPLIST_FILE: YES
+        # Must match the host app's team, or the hardened-runtime host refuses
+        # to dlopen the xctest bundle ("different Team IDs").
+        CODE_SIGN_STYLE: Automatic
+        DEVELOPMENT_TEAM: VP38993WK6
+        # The app's PRODUCT_NAME has a space, so xcodegen's derived TEST_HOST
+        # (which uses the target name) points at a bundle that does not exist.
+        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/Claude Meter.app/Contents/MacOS/Claude Meter"
+        BUNDLE_LOADER: "$(TEST_HOST)"
+
+schemes:
+  ClaudeMeter:
+    build:
+      targets:
+        ClaudeMeter: all
+        ClaudeMeterTests: [test]
+    run:
+      config: Debug
+    test:
+      config: Debug
+      targets:
+        - ClaudeMeterTests
