@@ -6,6 +6,7 @@ options:
 configs:
   Debug: debug
   Release: release
+  Release-AppStore: release
 
 settings:
   base:
@@ -23,6 +24,7 @@ targets:
         excludes:
           - "Info.plist"
           - "ClaudeMeter.entitlements"
+          - "ClaudeMeter-AppStore.entitlements"
     settings:
       base:
         PRODUCT_NAME: "Claude Meter"
@@ -32,6 +34,7 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.theportlandcompany.ClaudeMeter
         GENERATE_INFOPLIST_FILE: NO
         INFOPLIST_FILE: Sources/Info.plist
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         CODE_SIGN_ENTITLEMENTS: Sources/ClaudeMeter.entitlements
         CODE_SIGN_STYLE: Automatic
         DEVELOPMENT_TEAM: VP38993WK6
@@ -46,6 +49,14 @@ targets:
           # Override at the command line for a public build, ex:
           #   xcodebuild CODE_SIGN_IDENTITY="Developer ID Application" ...
           CODE_SIGN_IDENTITY: "Apple Development"
+        Release-AppStore:
+          # TestFlight / Mac App Store: sandboxed, Apple Distribution, manual
+          # profile minted via the ASC API (scripts/build-testflight.sh).
+          CODE_SIGN_STYLE: Manual
+          CODE_SIGN_IDENTITY: "Apple Distribution"
+          CODE_SIGN_ENTITLEMENTS: Sources/ClaudeMeter-AppStore.entitlements
+          ENABLE_APP_SANDBOX: YES
+          PROVISIONING_PROFILE_SPECIFIER: "Claude Meter Mac App Store"
 
   ClaudeMeterTests:
     type: bundle.unit-test
