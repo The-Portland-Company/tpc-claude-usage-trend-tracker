@@ -5,6 +5,7 @@ struct PopoverView: View {
     let model: UsageModel
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.openWindow) private var openWindow
     @State private var now = Date()
     @State private var notifyWeekly = true
     @State private var notifySession = false
@@ -16,13 +17,9 @@ struct PopoverView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             header
+            verdictLine
             if let error = model.lastError { banner(error) }
             rows
-            Divider()
-            Text(model.verdict)
-                .font(.system(size: 11))
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
             Divider()
             footer
         }
@@ -41,14 +38,58 @@ struct PopoverView: View {
     // MARK: Header
 
     private var header: some View {
-        HStack {
-            Text("Claude Usage Trend Tracker").font(.system(size: 13, weight: .semibold))
-            Spacer()
-            Text(updatedText)
-                .font(.system(size: 10))
-                .foregroundStyle(.secondary)
-            refreshButton
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                Text("Claude Usage Trend Tracker").font(.system(size: 13, weight: .semibold))
+                Spacer()
+                Text(updatedText)
+                    .font(.system(size: 10))
+                    .foregroundStyle(.secondary)
+                refreshButton
+            }
+            accountSwitcher
         }
+    }
+
+    private var accountSwitcher: some View {
+        Menu {
+            ForEach(model.accounts) { account in
+                Button {
+                    model.setActiveAccount(account.id)
+                } label: {
+                    if account.id == model.activeAccountID {
+                        Label(accountLabel(account), systemImage: "checkmark")
+                    } else {
+                        Text(accountLabel(account))
+                    }
+                }
+            }
+        } label: {
+            HStack(spacing: 3) {
+                Image(systemName: "person.crop.circle").font(.system(size: 10))
+                Text(accountLabel(model.activeAccount))
+                    .font(.system(size: 10))
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            }
+            .foregroundStyle(.secondary)
+        }
+        .menuStyle(.borderlessButton)
+        .fixedSize()
+    }
+
+    /// Prefer the account's known email, else its label.
+    private func accountLabel(_ account: Account) -> String {
+        model.email(for: account.id) ?? account.label
+    }
+
+    // MARK: Verdict (prominent, top)
+
+    private var verdictLine: some View {
+        Text(model.verdict)
+            .font(.system(size: 15, weight: .semibold))
+            .foregroundStyle(Color(severity: model.verdictSeverity))
+            .fixedSize(horizontal: false, vertical: true)
     }
 
     private var refreshButton: some View {
@@ -154,10 +195,20 @@ struct PopoverView: View {
             }
             HStack {
                 Button("Open Claude Code") { openTerminalApp() }
+                Button("Settings…") {
+                    openWindow(id: "settings")
+                    NSApp.activate(ignoringOtherApps: true)
+                }
                 Spacer()
                 Button("Quit") { NSApplication.shared.terminate(nil) }
             }
             .font(.system(size: 11))
+            HStack {
+                Spacer()
+                Link("by The Portland Company", destination: URL(string: "https://theportlandcompany.com")!)
+                    .font(.system(size: 10))
+                    .foregroundStyle(.secondary)
+            }
         }
         .toggleStyle(.switch)
         .controlSize(.small)

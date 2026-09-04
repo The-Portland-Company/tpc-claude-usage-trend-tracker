@@ -137,7 +137,11 @@ final class UsageClient {
 
     func fetch() async throws -> UsageSnapshot {
         let (token, _) = try CredentialStore.readAccessToken()
+        return try await fetch(token: token)
+    }
 
+    /// Fetch usage for an explicit access token (multi-account).
+    func fetch(token: String) async throws -> UsageSnapshot {
         var request = URLRequest(url: Self.endpoint)
         request.httpMethod = "GET"
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
@@ -157,6 +161,25 @@ final class UsageClient {
         guard (200..<300).contains(code) else { throw Error.http(code) }
 
         return try Self.decode(data, fetchedAt: Date())
+    }
+
+    static let profileEndpoint = URL(string: "https://api.anthropic.com/api/oauth/profile")!
+    /// Best-effort account email from /oauth/profile. Never throws.
+    func fetchAccount() async -> String? {
+        guard let (token, _) = try? CredentialStore.readAccessToken() else { return nil }
+        return await fetchAccount(token: token)
+    }
+
+    /// Best-effort account email for an explicit token. Never throws.
+    func fetchAccount(token: String) async -> String? {
+        var request = URLRequest(url: Self.profileEndpoint)
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        request.setValue("oauth-2025-04-20", forHTTPHeaderField: "anthropic-beta")
+        request.setValue(Self.userAgent, forHTTPHeaderField: "User-Agent")
+        guard let (data, resp) = try? await session.data(for: request),
+              (200..<300).contains((resp as? HTTPURLResponse)?.statusCode ?? -1) else { return nil }
+        struct P: Decodable { struct A: Decodable { let email: String? }; let account: A? }
+        return (try? JSONDecoder().decode(P.self, from: data))?.account?.email
     }
 
     /// Network-free decode, so tests can run against a fixture.
