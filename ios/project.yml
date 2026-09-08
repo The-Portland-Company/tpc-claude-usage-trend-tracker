@@ -1,0 +1,41 @@
+name: ClaudeMeterIOS
+
+options:
+  bundleIdPrefix: com.theportlandcompany
+
+configs:
+  Debug: debug
+  Release: release
+
+settings:
+  base:
+    SWIFT_VERSION: "5.9"
+    IPHONEOS_DEPLOYMENT_TARGET: "17.0"
+    CURRENT_PROJECT_VERSION: "1"
+    MARKETING_VERSION: "1.0"
+
+targets:
+  ClaudeMeterIOS:
+    type: application
+    platform: iOS
+    sources:
+      - path: Sources
+      - path: ../Sources/UsageClient.swift
+      - path: ../Sources/PaceMath.swift
+      - path: ../Sources/NotificationPlanner.swift
+      - path: ../Sources/AccountStore.swift
+    settings:
+      base:
+        PRODUCT_NAME: "Claude Usage Trend Tracker"
+        PRODUCT_MODULE_NAME: ClaudeMeterIOS
+        PRODUCT_BUNDLE_IDENTIFIER: com.theportlandcompany.ClaudeMeter.ios
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
+        INFOPLIST_KEY_UISupportedInterfaceOrientations: UIInterfaceOrientationPortrait
+        CODE_SIGN_STYLE: Automatic
+        DEVELOPMENT_TEAM: VP38993WK6
+        TARGETED_DEVICE_FAMILY: "1"
+      configs:
+        Debug:
+          SWIFT_ACTIVE_COMPILATION_CONDITIONS: "DEBUG"
