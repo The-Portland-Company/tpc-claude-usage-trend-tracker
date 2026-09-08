@@ -24,6 +24,13 @@ targets:
       - path: ../Sources/PaceMath.swift
       - path: ../Sources/NotificationPlanner.swift
       - path: ../Sources/AccountStore.swift
+    info:
+      path: Sources/Info.plist
+      properties:
+        CFBundleURLTypes:
+          - CFBundleURLName: com.theportlandcompany.ClaudeMeter.ios
+            CFBundleURLSchemes:
+              - claudetracker
     settings:
       base:
         PRODUCT_NAME: "Claude Usage Trend Tracker"
@@ -33,6 +40,7 @@ targets:
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
         INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
         INFOPLIST_KEY_UISupportedInterfaceOrientations: UIInterfaceOrientationPortrait
+        INFOPLIST_KEY_NSCameraUsageDescription: "Camera access is used to scan the pairing QR code shown by the Mac app."
         CODE_SIGN_STYLE: Automatic
         DEVELOPMENT_TEAM: VP38993WK6
         TARGETED_DEVICE_FAMILY: "1"

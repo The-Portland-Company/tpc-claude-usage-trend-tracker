@@ -251,6 +251,21 @@ final class UsageModel {
         return nil
     }
 
+    /// Builds a fresh QR pairing payload + backup code for the active
+    /// account. Never cached — call again each time the sheet is shown.
+    func buildPairing() -> (payload: PairingPayload?, backupCode: String?, errorText: String?) {
+        do {
+            let result = try PairingQR.build(accountStore: accountStore, account: activeAccount)
+            return (result.payload, result.backupCode, nil)
+        } catch let e as PairingQR.Error {
+            switch e {
+            case .noToken(let message): return (nil, nil, message)
+            }
+        } catch {
+            return (nil, nil, Self.describe(error))
+        }
+    }
+
     func start() {
         notifier.requestPermission()
         Task { await refresh() }

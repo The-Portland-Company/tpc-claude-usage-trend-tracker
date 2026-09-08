@@ -63,34 +63,60 @@ object UsageApi {
 
     fun refreshToken(refreshToken: String): TokenRefreshResult {
         return try {
-            val url = URL("https://console.anthropic.com/v1/oauth/token")
-            val conn = url.openConnection() as HttpURLConnection
-            conn.requestMethod = "POST"
-            conn.doOutput = true
-            conn.setRequestProperty("Content-Type", "application/json")
-            conn.setRequestProperty("User-Agent", USER_AGENT)
             val payload = JSONObject()
                 .put("grant_type", "refresh_token")
                 .put("refresh_token", refreshToken)
                 .put("client_id", CLIENT_ID)
-            conn.outputStream.use { it.write(payload.toString().toByteArray(Charsets.UTF_8)) }
-            val code = conn.responseCode
-            if (code !in 200..299) {
-                val err = readStream(conn.errorStream)
-                conn.disconnect()
-                return TokenRefreshResult.Failure("HTTP $code: $err")
-            }
-            val body = readStream(conn.inputStream)
-            conn.disconnect()
-            val json = JSONObject(body)
-            TokenRefreshResult.Success(
-                accessToken = json.getString("access_token"),
-                refreshToken = json.optString("refresh_token").takeIf { it.isNotBlank() },
-                expiresInSeconds = json.optLong("expires_in", 0L),
-            )
+            postToken(payload)
         } catch (e: Exception) {
             TokenRefreshResult.Failure(e.message ?: "network error")
         }
+    }
+
+    /** Exchanges an authorization code (from the OAuth redirect or the manual
+     * CODE#STATE paste) for an access/refresh token pair. */
+    fun exchangeCode(
+        code: String,
+        codeVerifier: String,
+        redirectUri: String,
+        state: String,
+    ): TokenRefreshResult {
+        return try {
+            val payload = JSONObject()
+                .put("grant_type", "authorization_code")
+                .put("client_id", CLIENT_ID)
+                .put("code", code)
+                .put("redirect_uri", redirectUri)
+                .put("code_verifier", codeVerifier)
+                .put("state", state)
+            postToken(payload)
+        } catch (e: Exception) {
+            TokenRefreshResult.Failure(e.message ?: "network error")
+        }
+    }
+
+    private fun postToken(payload: JSONObject): TokenRefreshResult {
+        val url = URL("https://console.anthropic.com/v1/oauth/token")
+        val conn = url.openConnection() as HttpURLConnection
+        conn.requestMethod = "POST"
+        conn.doOutput = true
+        conn.setRequestProperty("Content-Type", "application/json")
+        conn.setRequestProperty("User-Agent", USER_AGENT)
+        conn.outputStream.use { it.write(payload.toString().toByteArray(Charsets.UTF_8)) }
+        val code = conn.responseCode
+        if (code !in 200..299) {
+            val err = readStream(conn.errorStream)
+            conn.disconnect()
+            return TokenRefreshResult.Failure("HTTP $code: $err")
+        }
+        val body = readStream(conn.inputStream)
+        conn.disconnect()
+        val json = JSONObject(body)
+        return TokenRefreshResult.Success(
+            accessToken = json.getString("access_token"),
+            refreshToken = json.optString("refresh_token").takeIf { it.isNotBlank() },
+            expiresInSeconds = json.optLong("expires_in", 0L),
+        )
     }
 
     private fun openGet(urlString: String, accessToken: String): HttpURLConnection {

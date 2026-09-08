@@ -150,6 +150,24 @@ final class AccountStore {
         return token.accessToken
     }
 
+    /// Fetches the raw token material for the pairing QR (never persisted or
+    /// logged, used once to build the payload). Throws the same `TokenError`s
+    /// as `resolveToken`.
+    func pairingCredentials(for id: String) throws -> (accessToken: String, refreshToken: String?, expiresAt: Date?, scopes: [String]) {
+        if id == Account.primaryID {
+            guard let full = try? CredentialStore.readFullCredentials() else {
+                throw TokenError.primaryUnavailable
+            }
+            return (full.token, full.refreshToken, full.expiresAt, full.scopes ?? Self.defaultScopes)
+        }
+        guard let token = AccountKeychain.load(for: id) else { throw TokenError.noToken }
+        return (token.accessToken, token.refreshToken, token.expiresAt, Self.defaultScopes)
+    }
+
+    /// The scopes Claude Code requests; used when the stored credential
+    /// doesn't carry its own scope list.
+    static let defaultScopes = ["user:profile", "user:inference"]
+
     /// Best-effort OAuth refresh. Returns nil on any failure (network, wrong
     /// endpoint/const, non-2xx, unparseable body) so the caller degrades to
     /// "sign-in expired" rather than crashing.

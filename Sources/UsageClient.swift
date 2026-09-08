@@ -6,8 +6,10 @@ import Foundation
 struct ClaudeCredentials: Decodable {
     struct OAuth: Decodable {
         let accessToken: String
+        let refreshToken: String?
         /// Milliseconds since the Unix epoch.
         let expiresAt: Double
+        let scopes: [String]?
     }
     let claudeAiOauth: OAuth
 }
@@ -50,12 +52,37 @@ enum CredentialStore {
 
     /// Exposed for tests: turns the raw Keychain blob into a token + expiry.
     static func decodeCredentials(_ data: Data) throws -> (token: String, expiresAt: Date) {
+        let full = try decodeFullCredentials(data)
+        return (full.token, full.expiresAt)
+    }
+
+    /// The full OAuth record (token, refresh token, expiry, scopes), used only
+    /// for building the pairing QR payload. Never persisted.
+    static func readFullCredentials() throws -> (token: String, refreshToken: String?, expiresAt: Date, scopes: [String]?) {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecReturnData as String: true,
+            kSecMatchLimit as String: kSecMatchLimitOne,
+        ]
+        var item: CFTypeRef?
+        let status = SecItemCopyMatching(query as CFDictionary, &item)
+        switch status {
+        case errSecSuccess: break
+        case errSecItemNotFound: throw Error.notFound
+        default: throw Error.accessDenied(status)
+        }
+        guard let data = item as? Data else { throw Error.malformed }
+        return try decodeFullCredentials(data)
+    }
+
+    private static func decodeFullCredentials(_ data: Data) throws -> (token: String, refreshToken: String?, expiresAt: Date, scopes: [String]?) {
         guard let creds = try? JSONDecoder().decode(ClaudeCredentials.self, from: data) else {
             throw Error.malformed
         }
         let oauth = creds.claudeAiOauth
         guard !oauth.accessToken.isEmpty else { throw Error.malformed }
-        return (oauth.accessToken, Date(timeIntervalSince1970: oauth.expiresAt / 1000))
+        return (oauth.accessToken, oauth.refreshToken, Date(timeIntervalSince1970: oauth.expiresAt / 1000), oauth.scopes)
     }
 }
 

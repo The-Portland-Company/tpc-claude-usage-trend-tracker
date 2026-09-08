@@ -10,6 +10,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
+import androidx.browser.customtabs.CustomTabsIntent
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -27,6 +28,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.journeyapps.barcodescanner.ScanContract
+import com.journeyapps.barcodescanner.ScanOptions
+import com.theportlandcompany.claudemeter.auth.OAuthSession
 import com.theportlandcompany.claudemeter.data.Account
 import com.theportlandcompany.claudemeter.data.ExtraUsage
 import com.theportlandcompany.claudemeter.pace.PaceMath
@@ -63,6 +67,7 @@ fun AppRoot(viewModel: MainViewModel) {
     val history by viewModel.history.collectAsStateWithLifecycle()
 
     var screen by remember { mutableStateOf(Screen.MAIN) }
+    val context = androidx.compose.ui.platform.LocalContext.current
 
     val notifPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission(),
@@ -73,9 +78,58 @@ fun AppRoot(viewModel: MainViewModel) {
         }
     }
 
+    var pendingResult by remember { mutableStateOf<((Boolean, String?) -> Unit)?>(null) }
+    LaunchedEffect(Unit) {
+        OAuthSession.results.collect { result ->
+            viewModel.completeOAuth(result.code, result.state) { ok, err ->
+                pendingResult?.invoke(ok, err)
+                if (ok) screen = Screen.MAIN
+            }
+        }
+    }
+
+    val qrScanLauncher = rememberLauncherForActivityResult(ScanContract()) { result ->
+        val raw = result.contents
+        if (raw != null) {
+            viewModel.handlePairingScan(raw) { ok, err ->
+                pendingResult?.invoke(ok, err)
+                if (ok) screen = Screen.MAIN
+            }
+        }
+    }
+
+    fun launchOAuth() {
+        val url = viewModel.buildOAuthAuthorizeUrl()
+        CustomTabsIntent.Builder().build().launchUrl(context, Uri.parse(url))
+    }
+
+    fun launchQrScan() {
+        qrScanLauncher.launch(
+            ScanOptions()
+                .setDesiredBarcodeFormats(ScanOptions.QR_CODE)
+                .setPrompt("Scan the QR code from your Mac's Settings")
+                .setBeepEnabled(false)
+                .setOrientationLocked(true),
+        )
+    }
+
     when {
         state is LoadState.NeedsOnboarding || screen == Screen.ADD_ACCOUNT -> {
             OnboardingScreen(
+                onSignInWithClaude = { onResult ->
+                    pendingResult = onResult
+                    launchOAuth()
+                },
+                onPairWithMac = { onResult ->
+                    pendingResult = onResult
+                    launchQrScan()
+                },
+                onSubmitManualCode = { pasted, onResult ->
+                    viewModel.completeOAuthFromManualPaste(pasted) { ok, err ->
+                        onResult(ok, err)
+                        if (ok) screen = Screen.MAIN
+                    }
+                },
                 onSubmit = { access, refresh, onResult ->
                     viewModel.addAccount(access, refresh) { ok, err ->
                         onResult(ok, err)
@@ -229,13 +283,28 @@ fun ExtraUsageCard(extra: ExtraUsage) {
 
 @Composable
 fun OnboardingScreen(
+    onSignInWithClaude: ((Boolean, String?) -> Unit) -> Unit,
+    onPairWithMac: ((Boolean, String?) -> Unit) -> Unit,
+    onSubmitManualCode: (String, (Boolean, String?) -> Unit) -> Unit,
     onSubmit: (String, String?, (Boolean, String?) -> Unit) -> Unit,
     onCancel: (() -> Unit)?,
 ) {
-    var accessToken by remember { mutableStateOf("") }
-    var refreshToken by remember { mutableStateOf("") }
     var error by remember { mutableStateOf<String?>(null) }
     var loading by remember { mutableStateOf(false) }
+    var advancedExpanded by remember { mutableStateOf(false) }
+
+    var manualCode by remember { mutableStateOf("") }
+    var accessToken by remember { mutableStateOf("") }
+    var refreshToken by remember { mutableStateOf("") }
+
+    fun runFlow(start: ((Boolean, String?) -> Unit) -> Unit) {
+        loading = true
+        error = null
+        start { ok, err ->
+            loading = false
+            if (!ok) error = err ?: "Couldn't sign you in."
+        }
+    }
 
     Column(
         Modifier
@@ -243,45 +312,115 @@ fun OnboardingScreen(
             .verticalScroll(rememberScrollState())
             .padding(24.dp),
     ) {
-        Text("Add Claude account", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
-        Spacer(Modifier.height(12.dp))
+        Text("Claude Usage Trend Tracker", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
+        Spacer(Modifier.height(8.dp))
         Text(
-            "Paste your Claude Code access token. Find it on a machine where you've run Claude Code, in the credential store's claudeAiOauth.accessToken field.",
+            "Connect a Claude account to see your usage and pace.",
             style = MaterialTheme.typography.bodyMedium,
         )
-        Spacer(Modifier.height(20.dp))
-        OutlinedTextField(
-            value = accessToken,
-            onValueChange = { accessToken = it },
-            label = { Text("Access token") },
+        Spacer(Modifier.height(24.dp))
+
+        Button(
+            enabled = !loading,
+            onClick = { runFlow(onSignInWithClaude) },
             modifier = Modifier.fillMaxWidth(),
-        )
-        Spacer(Modifier.height(12.dp))
-        OutlinedTextField(
-            value = refreshToken,
-            onValueChange = { refreshToken = it },
-            label = { Text("Refresh token (optional)") },
+        ) {
+            Text("Sign in with Claude")
+        }
+        Spacer(Modifier.height(10.dp))
+        OutlinedButton(
+            enabled = !loading,
+            onClick = { runFlow(onPairWithMac) },
             modifier = Modifier.fillMaxWidth(),
-        )
+        ) {
+            Text("Pair with my Mac")
+        }
+
         error?.let {
             Spacer(Modifier.height(12.dp))
             Text(it, color = SeverityCritical)
         }
-        Spacer(Modifier.height(20.dp))
-        Button(
-            enabled = accessToken.isNotBlank() && !loading,
-            onClick = {
-                loading = true
-                error = null
-                onSubmit(accessToken.trim(), refreshToken.trim().ifBlank { null }) { ok, err ->
-                    loading = false
-                    if (!ok) error = err ?: "Couldn't validate that token."
-                }
-            },
-            modifier = Modifier.fillMaxWidth(),
-        ) {
-            Text(if (loading) "Validating…" else "Add account")
+        if (loading) {
+            Spacer(Modifier.height(12.dp))
+            Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                CircularProgressIndicator()
+            }
         }
+
+        Spacer(Modifier.height(24.dp))
+        TextButton(onClick = { advancedExpanded = !advancedExpanded }, modifier = Modifier.fillMaxWidth()) {
+            Text(if (advancedExpanded) "Hide advanced options" else "Advanced: paste a token")
+        }
+
+        if (advancedExpanded) {
+            Spacer(Modifier.height(8.dp))
+            Text("Paste OAuth code", style = MaterialTheme.typography.titleSmall)
+            Spacer(Modifier.height(4.dp))
+            Text(
+                "If sign-in didn't return to the app, paste the CODE#STATE shown on the authorize page.",
+                style = MaterialTheme.typography.bodySmall,
+            )
+            Spacer(Modifier.height(8.dp))
+            OutlinedTextField(
+                value = manualCode,
+                onValueChange = { manualCode = it },
+                label = { Text("CODE#STATE") },
+                modifier = Modifier.fillMaxWidth(),
+            )
+            Spacer(Modifier.height(8.dp))
+            Button(
+                enabled = manualCode.isNotBlank() && !loading,
+                onClick = {
+                    loading = true
+                    error = null
+                    onSubmitManualCode(manualCode.trim()) { ok, err ->
+                        loading = false
+                        if (!ok) error = err ?: "Couldn't complete sign-in."
+                    }
+                },
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text("Complete sign-in")
+            }
+
+            Spacer(Modifier.height(20.dp))
+            Text("Paste a token directly", style = MaterialTheme.typography.titleSmall)
+            Spacer(Modifier.height(4.dp))
+            Text(
+                "Find it on a machine where you've run Claude Code, in the credential store's claudeAiOauth.accessToken field.",
+                style = MaterialTheme.typography.bodySmall,
+            )
+            Spacer(Modifier.height(8.dp))
+            OutlinedTextField(
+                value = accessToken,
+                onValueChange = { accessToken = it },
+                label = { Text("Access token") },
+                modifier = Modifier.fillMaxWidth(),
+            )
+            Spacer(Modifier.height(12.dp))
+            OutlinedTextField(
+                value = refreshToken,
+                onValueChange = { refreshToken = it },
+                label = { Text("Refresh token (optional)") },
+                modifier = Modifier.fillMaxWidth(),
+            )
+            Spacer(Modifier.height(12.dp))
+            Button(
+                enabled = accessToken.isNotBlank() && !loading,
+                onClick = {
+                    loading = true
+                    error = null
+                    onSubmit(accessToken.trim(), refreshToken.trim().ifBlank { null }) { ok, err ->
+                        loading = false
+                        if (!ok) error = err ?: "Couldn't validate that token."
+                    }
+                },
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text(if (loading) "Validating…" else "Add account")
+            }
+        }
+
         if (onCancel != null) {
             Spacer(Modifier.height(8.dp))
             TextButton(onClick = onCancel, modifier = Modifier.fillMaxWidth()) { Text("Cancel") }

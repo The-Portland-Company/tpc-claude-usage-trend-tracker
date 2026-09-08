@@ -10,6 +10,7 @@ struct SettingsView: View {
     @State private var refreshToken = ""
     @State private var isValidating = false
     @State private var errorText: String?
+    @State private var showPairingSheet = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -22,12 +23,32 @@ struct SettingsView: View {
 
             accountList
 
+            pairingSection
+
             Divider()
 
             addForm
         }
         .padding(18)
         .frame(width: 460, height: 600)
+        .sheet(isPresented: $showPairingSheet) {
+            PairingQRSheet(model: model)
+        }
+    }
+
+    // MARK: Pairing
+
+    private var pairingSection: some View {
+        HStack {
+            Button {
+                showPairingSheet = true
+            } label: {
+                Label("Set up on your phone", systemImage: "qrcode")
+                    .font(.system(size: 12))
+            }
+            Spacer()
+        }
+        .padding(.top, 2)
     }
 
     // MARK: Menu bar
