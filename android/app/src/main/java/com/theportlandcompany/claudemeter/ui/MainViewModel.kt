@@ -166,6 +166,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             "&state=$state"
     }
 
+    /** Clears any in-flight PKCE state — used by Cancel / timeout / resume-with-
+     * no-callback recovery so a stale authorize attempt can't be exchanged late. */
+    fun cancelOAuthPending() {
+        OAuthSession.pending = null
+    }
+
     /** Completes the exchange for a code+state pair, whether captured
      * automatically via the redirect activity or pasted manually. */
     fun completeOAuth(code: String, state: String, onResult: (Boolean, String?) -> Unit) {

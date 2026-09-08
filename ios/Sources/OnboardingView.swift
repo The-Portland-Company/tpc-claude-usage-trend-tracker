@@ -43,6 +43,14 @@ struct OnboardingView: View {
                     .buttonStyle(.borderedProminent)
                     .disabled(isSigningIn)
 
+                    if isSigningIn {
+                        Button("Cancel") {
+                            oauth.cancel()
+                        }
+                        .buttonStyle(.bordered)
+                        .frame(maxWidth: .infinity)
+                    }
+
                     Button {
                         scannerError = nil
                         showScanner = true

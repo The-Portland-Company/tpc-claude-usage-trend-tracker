@@ -23,6 +23,11 @@ final class OAuthController: NSObject, ObservableObject, ASWebAuthenticationPres
     private var session: ASWebAuthenticationSession?
     private var codeVerifier: String?
     private var state: String?
+    private var timeoutTask: Task<Void, Never>?
+    private var userCancelled = false
+    private var timedOut = false
+
+    static let signInTimeout: TimeInterval = 90
 
     struct TokenResult {
         let accessToken: String
@@ -30,12 +35,23 @@ final class OAuthController: NSObject, ObservableObject, ASWebAuthenticationPres
         let expiresAt: Date?
     }
 
+    /// Aborts an in-flight sign-in (user tapped Cancel, or the caller is
+    /// tearing down). Resets straight back to idle with no error shown.
+    func cancel() {
+        guard isPresenting else { return }
+        userCancelled = true
+        session?.cancel()
+    }
+
     /// Kicks off the browser-based flow. Calls `completion` with the
     /// exchanged tokens on success, or leaves `needsManualFallback` set so
-    /// the caller can show the manual-paste field.
+    /// the caller can show the manual-paste field. Auto-cancels after
+    /// `signInTimeout` seconds if the browser never returns.
     func startSignIn(completion: @escaping (TokenResult?) -> Void) {
         errorMessage = nil
         needsManualFallback = false
+        userCancelled = false
+        timedOut = false
 
         let verifier = Self.randomBase64URL(byteCount: 64)
         let challenge = Self.codeChallenge(for: verifier)
@@ -63,13 +79,21 @@ final class OAuthController: NSObject, ObservableObject, ASWebAuthenticationPres
         let session = ASWebAuthenticationSession(url: url, callbackURLScheme: "claudetracker") { [weak self] callbackURL, error in
             guard let self else { return }
             Task { @MainActor in
+                self.timeoutTask?.cancel()
+                self.timeoutTask = nil
                 self.isPresenting = false
                 if let callbackURL, error == nil {
                     let result = await self.handleCallback(callbackURL)
                     completion(result)
+                } else if self.userCancelled {
+                    // User explicitly cancelled: reset to idle, no error text.
+                    completion(nil)
+                } else if self.timedOut {
+                    self.errorMessage = "Sign-in timed out — try again, or use Pair with my Mac / Advanced."
+                    completion(nil)
                 } else {
-                    // Cancelled, denied, or the client rejected our redirect.
-                    // Fall back to the manual CODE#STATE paste flow.
+                    // Denied, or the client rejected our redirect. Fall back
+                    // to the manual CODE#STATE paste flow.
                     self.needsManualFallback = true
                     completion(nil)
                 }
@@ -79,6 +103,16 @@ final class OAuthController: NSObject, ObservableObject, ASWebAuthenticationPres
         session.prefersEphemeralWebBrowserSession = true
         self.session = session
         session.start()
+
+        timeoutTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: UInt64(Self.signInTimeout * 1_000_000_000))
+            guard let self, !Task.isCancelled else { return }
+            await MainActor.run {
+                guard self.isPresenting else { return }
+                self.timedOut = true
+                self.session?.cancel()
+            }
+        }
     }
 
     /// Manual fallback: user pastes "CODE#STATE" copied from the authorize

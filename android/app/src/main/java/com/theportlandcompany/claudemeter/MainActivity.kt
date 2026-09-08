@@ -26,7 +26,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.journeyapps.barcodescanner.ScanContract
 import com.journeyapps.barcodescanner.ScanOptions
@@ -35,6 +38,7 @@ import com.theportlandcompany.claudemeter.data.Account
 import com.theportlandcompany.claudemeter.data.ExtraUsage
 import com.theportlandcompany.claudemeter.pace.PaceMath
 import com.theportlandcompany.claudemeter.ui.*
+import kotlinx.coroutines.delay
 
 class MainActivity : ComponentActivity() {
 
@@ -79,11 +83,60 @@ fun AppRoot(viewModel: MainViewModel) {
     }
 
     var pendingResult by remember { mutableStateOf<((Boolean, String?) -> Unit)?>(null) }
+
+    // --- OAuth watchdog: the Custom Tab may never come back (no browser that
+    // supports it, user backs out without finishing, etc.) so the loading
+    // spinner needs a way out besides waiting forever. ---
+    var oauthPending by remember { mutableStateOf(false) }
+    var oauthGeneration by remember { mutableIntStateOf(0) }
+    var pausedSinceOAuthLaunch by remember { mutableStateOf(false) }
+
+    fun finishOAuthAttempt(ok: Boolean, message: String?) {
+        if (!oauthPending) return
+        oauthPending = false
+        pausedSinceOAuthLaunch = false
+        viewModel.cancelOAuthPending()
+        pendingResult?.invoke(ok, message)
+    }
+
     LaunchedEffect(Unit) {
         OAuthSession.results.collect { result ->
+            oauthPending = false
+            pausedSinceOAuthLaunch = false
             viewModel.completeOAuth(result.code, result.state) { ok, err ->
                 pendingResult?.invoke(ok, err)
                 if (ok) screen = Screen.MAIN
+            }
+        }
+    }
+
+    // ~90s timeout for a stuck flow.
+    LaunchedEffect(oauthGeneration) {
+        if (oauthGeneration == 0) return@LaunchedEffect
+        delay(90_000)
+        finishOAuthAttempt(false, "Sign-in timed out — try again, or use Pair with my Mac / Advanced.")
+    }
+
+    // Handle returning to the app (e.g. the user backed out of the browser)
+    // without ever getting a callback.
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_PAUSE -> if (oauthPending) pausedSinceOAuthLaunch = true
+                else -> {}
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+    LaunchedEffect(oauthPending, pausedSinceOAuthLaunch) {
+        if (oauthPending && pausedSinceOAuthLaunch) {
+            // Give the buffered OAuthSession result (if any) a moment to land
+            // first, so a genuine success isn't mistaken for an abandoned flow.
+            delay(500)
+            if (oauthPending && pausedSinceOAuthLaunch) {
+                finishOAuthAttempt(false, "Sign-in was not completed. Try again, or use Pair with my Mac / Advanced.")
             }
         }
     }
@@ -100,6 +153,9 @@ fun AppRoot(viewModel: MainViewModel) {
 
     fun launchOAuth() {
         val url = viewModel.buildOAuthAuthorizeUrl()
+        oauthPending = true
+        pausedSinceOAuthLaunch = false
+        oauthGeneration++
         CustomTabsIntent.Builder().build().launchUrl(context, Uri.parse(url))
     }
 
@@ -136,6 +192,8 @@ fun AppRoot(viewModel: MainViewModel) {
                         if (ok) screen = Screen.MAIN
                     }
                 },
+                oauthPending = oauthPending,
+                onCancelOAuth = { finishOAuthAttempt(false, null) },
                 onCancel = if (accounts.isNotEmpty()) { { screen = Screen.MAIN } } else null,
             )
         }
@@ -287,6 +345,8 @@ fun OnboardingScreen(
     onPairWithMac: ((Boolean, String?) -> Unit) -> Unit,
     onSubmitManualCode: (String, (Boolean, String?) -> Unit) -> Unit,
     onSubmit: (String, String?, (Boolean, String?) -> Unit) -> Unit,
+    oauthPending: Boolean,
+    onCancelOAuth: () -> Unit,
     onCancel: (() -> Unit)?,
 ) {
     var error by remember { mutableStateOf<String?>(null) }
@@ -344,6 +404,12 @@ fun OnboardingScreen(
             Spacer(Modifier.height(12.dp))
             Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
                 CircularProgressIndicator()
+            }
+        }
+        if (oauthPending) {
+            Spacer(Modifier.height(8.dp))
+            TextButton(onClick = onCancelOAuth, modifier = Modifier.fillMaxWidth()) {
+                Text("Cancel")
             }
         }
 
