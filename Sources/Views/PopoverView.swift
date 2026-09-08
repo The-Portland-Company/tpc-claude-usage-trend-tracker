@@ -204,6 +204,19 @@ struct PopoverView: View {
             }
             .font(.system(size: 11))
             HStack {
+                Link(destination: URL(string: "https://theportlandcompany.com/apps")!) {
+                    HStack(spacing: 4) {
+                        Image(systemName: "square.grid.2x2")
+                        Text("More apps by Spencer Hill & The Portland Company")
+                        Image(systemName: "chevron.right")
+                    }
+                }
+                .buttonStyle(.borderless)
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
+                Spacer()
+            }
+            HStack {
                 Spacer()
                 Link("by The Portland Company", destination: URL(string: "https://theportlandcompany.com")!)
                     .font(.system(size: 10))

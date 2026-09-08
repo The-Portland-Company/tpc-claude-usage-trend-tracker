@@ -6,6 +6,7 @@ import Observation
 struct BucketView: Identifiable, Equatable {
     let id: String            // kind + scope
     let kind: String
+    let scope: String?        // scope display name, ex. "Fable" (weekly_scoped only)
     let title: String
     let percent: Double
     let resetsAt: Date?
@@ -14,6 +15,36 @@ struct BucketView: Identifiable, Equatable {
     let severity: PaceMath.Severity
     let samples: [Double]     // recent percents for the sparkline, oldest first
     let isPrimary: Bool       // shown in the menu bar title
+
+    /// SF Symbol that represents this bucket in the menu bar.
+    var menuIcon: String {
+        switch kind {
+        case "weekly_all": return "calendar"
+        case "session": return "clock"
+        case "weekly_scoped":
+            if let c = scope?.lowercased().first, c.isLetter {
+                return "\(c).circle.fill"   // f.circle.fill for Fable, o.circle.fill for Opus…
+            }
+            return "cpu"
+        default: return "gauge.with.dots.needle.33percent"
+        }
+    }
+}
+
+/// How the menu bar renders each selected percentage.
+enum MenuBarStyle: String, CaseIterable, Identifiable {
+    case icon          // SF Symbol + percent
+    case coloredText   // no icon, percent tinted by severity
+    var id: String { rawValue }
+    var label: String { self == .icon ? "Icons" : "Colored text" }
+}
+
+/// One rendered segment of the menu bar title.
+struct MenuBarItem: Identifiable, Equatable {
+    let id: String
+    let icon: String
+    let text: String
+    let severity: PaceMath.Severity
 }
 
 @Observable
@@ -36,6 +67,48 @@ final class UsageModel {
         }
         if let p = lastWeeklyPercent { return "\(Int(p.rounded()))%" }
         return "–"
+    }
+
+    // MARK: Menu bar selection (which percentages show, and how)
+
+    /// Which buckets appear in the menu bar, in order. Defaults to the weekly
+    /// all-models limit (the original single-item behavior).
+    private(set) var menuBarBucketIDs: [String]
+    /// Icons + percent, or colored percent text only.
+    private(set) var menuBarStyle: MenuBarStyle
+
+    func setMenuBarStyle(_ s: MenuBarStyle) {
+        menuBarStyle = s
+        defaults.set(s.rawValue, forKey: "menuBarStyle")
+    }
+
+    func isInMenuBar(_ id: String) -> Bool { menuBarBucketIDs.contains(id) }
+
+    /// Toggle a bucket in/out of the menu bar, preserving selection order.
+    func toggleMenuBar(_ id: String) {
+        if let idx = menuBarBucketIDs.firstIndex(of: id) {
+            menuBarBucketIDs.remove(at: idx)
+        } else {
+            menuBarBucketIDs.append(id)
+        }
+        defaults.set(menuBarBucketIDs, forKey: "menuBarBucketIDs")
+    }
+
+    /// The segments to render in the menu bar. Falls back to the weekly figure
+    /// (even before the first live bucket) so the bar is never blank.
+    var menuBarItems: [MenuBarItem] {
+        let ids = menuBarBucketIDs.isEmpty ? ["weekly_all"] : menuBarBucketIDs
+        let items: [MenuBarItem] = ids.compactMap { id in
+            guard let b = buckets.first(where: { $0.id == id }) else { return nil }
+            let arrow = b.trend.rawValue.isEmpty ? "" : " \(b.trend.rawValue)"
+            return MenuBarItem(id: b.id, icon: b.menuIcon,
+                               text: "\(Int(b.percent.rounded()))%\(arrow)", severity: b.severity)
+        }
+        if items.isEmpty {
+            let text = lastWeeklyPercent.map { "\(Int($0.rounded()))%" } ?? "–"
+            return [MenuBarItem(id: "weekly_all", icon: "calendar", text: text, severity: .normal)]
+        }
+        return items
     }
     /// The Claude account whose usage is being read (from /oauth/profile).
     private(set) var account: String?
@@ -99,6 +172,8 @@ final class UsageModel {
         self.client = client
         self.notifier = notifier
         self.accountStore = accountStore
+        self.menuBarBucketIDs = defaults.stringArray(forKey: "menuBarBucketIDs") ?? ["weekly_all"]
+        self.menuBarStyle = MenuBarStyle(rawValue: defaults.string(forKey: "menuBarStyle") ?? "") ?? .icon
         self.histories[Account.primaryID] = history
         // Migrate the legacy single-account snapshot cache onto the primary key.
         if defaults.data(forKey: cacheKey(Account.primaryID)) == nil,
@@ -237,7 +312,7 @@ final class UsageModel {
             let id = l.scopeDisplayName.map { "\(l.kind)|\($0)" } ?? l.kind
             let proj = PaceMath.project(percent: l.percent, kind: l.kind, resetsAt: l.resetsAt, now: now)
             let samples = store.samples(for: id)
-            return BucketView(id: id, kind: l.kind, title: Self.title(for: l), percent: l.percent, resetsAt: l.resetsAt,
+            return BucketView(id: id, kind: l.kind, scope: l.scopeDisplayName, title: Self.title(for: l), percent: l.percent, resetsAt: l.resetsAt,
                               projection: proj,
                               trend: PaceMath.trend(samples: samples, kind: l.kind, now: now),
                               severity: PaceMath.severity(percent: l.percent, projection: proj),

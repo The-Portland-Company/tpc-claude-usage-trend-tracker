@@ -32,12 +32,7 @@ struct ClaudeUsageTrendTrackerApp: App {
                     if !started { started = true; model.start() }
                 }
         } label: {
-            let tint = Color.menuBarTint(model.menuSeverity)
-            HStack(spacing: 3) {
-                Image(systemName: "gauge.with.dots.needle.33percent")
-                Text(model.menuTitle)
-            }
-            .foregroundStyle(tint)
+            MenuBarLabelView(items: model.menuBarItems, style: model.menuBarStyle)
         }
         .menuBarExtraStyle(.window)
 

@@ -13,6 +13,10 @@ struct SettingsView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
+            menuBarSection
+
+            Divider()
+
             Text("Accounts")
                 .font(.system(size: 15, weight: .semibold))
 
@@ -23,7 +27,54 @@ struct SettingsView: View {
             addForm
         }
         .padding(18)
-        .frame(width: 460, height: 420)
+        .frame(width: 460, height: 600)
+    }
+
+    // MARK: Menu bar
+
+    private var menuBarSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Menu bar")
+                .font(.system(size: 15, weight: .semibold))
+            Text("Pick which percentages appear in the menu bar.")
+                .font(.system(size: 11)).foregroundStyle(.secondary)
+
+            if model.buckets.isEmpty {
+                Text("Waiting for the first reading…")
+                    .font(.system(size: 11)).foregroundStyle(.secondary)
+            } else {
+                ForEach(model.buckets) { b in
+                    Toggle(isOn: Binding(
+                        get: { model.isInMenuBar(b.id) },
+                        set: { _ in model.toggleMenuBar(b.id) })) {
+                        HStack(spacing: 6) {
+                            Image(systemName: b.menuIcon).frame(width: 16)
+                            Text(b.title).font(.system(size: 12))
+                            Spacer()
+                            Text("\(Int(b.percent.rounded()))%")
+                                .font(.system(size: 11)).foregroundStyle(.secondary)
+                        }
+                    }
+                    .toggleStyle(.checkbox)
+                }
+            }
+
+            HStack(spacing: 10) {
+                Text("Style").font(.system(size: 12))
+                Picker("", selection: Binding(
+                    get: { model.menuBarStyle },
+                    set: { model.setMenuBarStyle($0) })) {
+                    ForEach(MenuBarStyle.allCases) { Text($0.label).tag($0) }
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .fixedSize()
+            }
+            .padding(.top, 2)
+            Text("Icons shows a symbol per limit. Colored text drops the icons and tints the number by how close you are to the limit.")
+                .font(.system(size: 10)).foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
     }
 
     // MARK: Account list
