@@ -46,11 +46,23 @@ final class AccountStore {
         self.session = session
     }
 
+    /// The App Store / TestFlight build is sandboxed and cannot read Claude
+    /// Code's login-Keychain item, so it has no primary account — every account
+    /// is one the user signed into (OAuth) or paired. The direct-download build
+    /// keeps the primary "Claude Code" account read live from the Keychain.
+    static var includesPrimary: Bool {
+        #if APPSTORE
+        return false
+        #else
+        return true
+        #endif
+    }
+
     // MARK: Account list
 
-    /// Every account, primary always first.
+    /// Every account, primary first when this build has one.
     func accounts() -> [Account] {
-        var result = [Account.primary]
+        var result: [Account] = Self.includesPrimary ? [Account.primary] : []
         result.append(contentsOf: addedAccounts())
         return result
     }
@@ -129,10 +141,15 @@ final class AccountStore {
     /// Refresh failures surface as `.signInExpired`, never a crash.
     func resolveToken(for id: String) async throws -> String {
         if id == Account.primaryID {
+            #if APPSTORE
+            // No primary account in the sandboxed build.
+            throw TokenError.primaryUnavailable
+            #else
             guard let creds = try? CredentialStore.readAccessToken() else {
                 throw TokenError.primaryUnavailable
             }
             return creds.token
+            #endif
         }
         guard var token = AccountKeychain.load(for: id) else { throw TokenError.noToken }
         let expired = token.expiresAt.map { $0 <= Date() } ?? false
@@ -155,10 +172,14 @@ final class AccountStore {
     /// as `resolveToken`.
     func pairingCredentials(for id: String) throws -> (accessToken: String, refreshToken: String?, expiresAt: Date?, scopes: [String]) {
         if id == Account.primaryID {
+            #if APPSTORE
+            throw TokenError.primaryUnavailable
+            #else
             guard let full = try? CredentialStore.readFullCredentials() else {
                 throw TokenError.primaryUnavailable
             }
             return (full.token, full.refreshToken, full.expiresAt, full.scopes ?? Self.defaultScopes)
+            #endif
         }
         guard let token = AccountKeychain.load(for: id) else { throw TokenError.noToken }
         return (token.accessToken, token.refreshToken, token.expiresAt, Self.defaultScopes)

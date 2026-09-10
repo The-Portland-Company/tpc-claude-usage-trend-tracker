@@ -36,5 +36,16 @@
 	<string>Copyright 2026 The Portland Company</string>
 	<key>NSUserNotificationsUsageDescription</key>
 	<string>Claude Usage Trend Tracker notifies you when a usage limit is close to running out.</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>com.theportlandcompany.ClaudeMeter.oauth</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>claudetracker</string>
+			</array>
+		</dict>
+	</array>
 </dict>
 </plist>

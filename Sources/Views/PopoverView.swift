@@ -11,15 +11,21 @@ struct PopoverView: View {
     @State private var notifySession = false
     @State private var launchAtLogin = false
     @State private var launchError: String?
+    @State private var isSigningIn = false
+    @State private var signInError: String?
 
     private let tick = Timer.publish(every: 30, on: .main, in: .common).autoconnect()
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             header
-            verdictLine
-            if let error = model.lastError { banner(error) }
-            rows
+            if model.hasNoAccounts {
+                signInPrompt
+            } else {
+                verdictLine
+                if let error = model.lastError { banner(error) }
+                rows
+            }
             Divider()
             footer
         }
@@ -76,6 +82,55 @@ struct PopoverView: View {
         }
         .menuStyle(.borderlessButton)
         .fixedSize()
+        .opacity(model.hasNoAccounts ? 0 : 1)
+        .disabled(model.hasNoAccounts)
+    }
+
+    // MARK: Sign-in empty state
+
+    private var signInPrompt: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Sign in to track your Claude usage")
+                .font(.system(size: 14, weight: .semibold))
+                .fixedSize(horizontal: false, vertical: true)
+            Text("Connect your Claude account to see how close you are to your limits.")
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            Button {
+                signIn()
+            } label: {
+                HStack(spacing: 6) {
+                    if isSigningIn {
+                        ProgressView().controlSize(.small)
+                    } else {
+                        Image(systemName: "person.crop.circle.badge.plus")
+                    }
+                    Text("Sign in with Claude")
+                }
+            }
+            .disabled(isSigningIn)
+            if let signInError {
+                Text(signInError).font(.system(size: 11)).foregroundStyle(.red)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Text("Or open Settings to pair with your Mac or paste a token.")
+                .font(.system(size: 10))
+                .foregroundStyle(.secondary)
+        }
+        .padding(.vertical, 4)
+    }
+
+    private func signIn() {
+        isSigningIn = true
+        signInError = nil
+        Task {
+            let err = await model.signInWithClaude()
+            await MainActor.run {
+                isSigningIn = false
+                signInError = err
+            }
+        }
     }
 
     /// Prefer the account's known email, else its label.

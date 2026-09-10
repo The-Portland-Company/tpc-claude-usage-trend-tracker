@@ -117,7 +117,12 @@ final class UsageModel {
     // MARK: Accounts (multi-account)
     private(set) var accounts: [Account] = []
     private(set) var activeAccountID: String = Account.primaryID
-    var activeAccount: Account { accounts.first { $0.id == activeAccountID } ?? .primary }
+    var activeAccount: Account {
+        accounts.first { $0.id == activeAccountID } ?? accounts.first ?? .primary
+    }
+    /// True when there is no account to read usage for — the sandboxed build
+    /// before the user signs in. Drives the popover's sign-in empty state.
+    var hasNoAccounts: Bool { accounts.isEmpty }
 
     /// The prominent top-of-popover verdict. Computed from the active account's
     /// weekly_all bucket.
@@ -187,6 +192,14 @@ final class UsageModel {
     private func reloadAccounts() {
         accounts = accountStore.accounts()
         activeAccountID = accountStore.activeAccountID
+        // The stored active account may no longer exist (e.g. the sandboxed
+        // build has no primary, or an account was removed). Fall back to the
+        // first available so we never point at a phantom account.
+        if accounts.first(where: { $0.id == activeAccountID }) == nil {
+            let fallback = accounts.first?.id ?? Account.primaryID
+            activeAccountID = fallback
+            accountStore.activeAccountID = fallback
+        }
     }
 
     /// Rebuild the visible state from the active account's cached snapshot.
@@ -219,6 +232,31 @@ final class UsageModel {
     }
 
     func email(for id: String) -> String? { accountStore.email(for: id) }
+
+    /// "Sign in with Claude" (OAuth). On success, stores the returned token as
+    /// a new account (in the app's own Keychain), makes it active, and
+    /// refreshes. Returns nil on success or a human error string. The
+    /// `OAuthController` is held alive across the browser flow by this frame's
+    /// local until the continuation resumes.
+    @MainActor
+    func signInWithClaude() async -> String? {
+        let controller = OAuthController()
+        let result: OAuthController.TokenResult? = await withCheckedContinuation { cont in
+            controller.startSignIn { cont.resume(returning: $0) }
+        }
+        guard let result else {
+            return controller.errorMessage  // nil when the user simply cancelled
+        }
+        let email = await client.fetchAccount(token: result.accessToken)
+        let account = accountStore.add(label: email ?? "Claude",
+                                       accessToken: result.accessToken,
+                                       refreshToken: result.refreshToken,
+                                       expiresAt: result.expiresAt,
+                                       email: email)
+        reloadAccounts()
+        setActiveAccount(account.id)
+        return nil
+    }
 
     func removeAccount(id: String) {
         accountStore.remove(id: id)
