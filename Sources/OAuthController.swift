@@ -125,9 +125,6 @@ final class OAuthController: ObservableObject {
         do {
             let (data, response) = try await URLSession.shared.data(for: request)
             let status = (response as? HTTPURLResponse)?.statusCode ?? -1
-            #if DEBUG
-            NSLog("[CUTT-OAUTH] token exchange status=\(status) body=\(String(data: data, encoding: .utf8) ?? "<binary>")")
-            #endif
             guard (200..<300).contains(status) else {
                 errorMessage = "Sign-in failed (the code may have expired). Try again."
                 return nil
