@@ -180,11 +180,19 @@ final class UsageModel {
         self.menuBarBucketIDs = defaults.stringArray(forKey: "menuBarBucketIDs") ?? ["weekly_all"]
         self.menuBarStyle = MenuBarStyle(rawValue: defaults.string(forKey: "menuBarStyle") ?? "") ?? .icon
         self.histories[Account.primaryID] = history
+        #if APPSTORE
+        // The sandboxed build has no primary account. Purge any snapshot cached
+        // by a previous Keychain-reading build so its stale usage numbers can
+        // never surface (in the menu bar or popover).
+        defaults.removeObject(forKey: "lastSnapshot")
+        defaults.removeObject(forKey: cacheKey(Account.primaryID))
+        #else
         // Migrate the legacy single-account snapshot cache onto the primary key.
         if defaults.data(forKey: cacheKey(Account.primaryID)) == nil,
            let legacy = defaults.data(forKey: "lastSnapshot") {
             defaults.set(legacy, forKey: cacheKey(Account.primaryID))
         }
+        #endif
         reloadAccounts()
         loadActiveFromCache(now: Date())
     }
@@ -205,6 +213,19 @@ final class UsageModel {
     /// Rebuild the visible state from the active account's cached snapshot.
     private func loadActiveFromCache(now: Date) {
         let id = activeAccountID
+        // Never show a cached reading that isn't tied to a real account in THIS
+        // build. The sandboxed build has no primary account, but a snapshot
+        // cached by a previous (Keychain-reading) build can still be on disk —
+        // displaying it would be stale/fake data. Show nothing until sign-in.
+        guard accounts.contains(where: { $0.id == id }) else {
+            account = nil
+            lastError = nil
+            lastGoodAt = nil
+            lastWeeklyPercent = nil
+            buckets = []
+            extraUsage = nil
+            return
+        }
         account = accountStore.email(for: id)
         lastError = nil
         if let snap = snapshots[id]
@@ -233,20 +254,12 @@ final class UsageModel {
 
     func email(for id: String) -> String? { accountStore.email(for: id) }
 
-    /// "Sign in with Claude" (OAuth). On success, stores the returned token as
-    /// a new account (in the app's own Keychain), makes it active, and
-    /// refreshes. Returns nil on success or a human error string. The
-    /// `OAuthController` is held alive across the browser flow by this frame's
-    /// local until the continuation resumes.
+    /// Stores a token obtained via "Sign in with Claude" (OAuth manual flow) as
+    /// a new account in the app's own Keychain, makes it active, and refreshes.
+    /// The browser + code-paste steps live in `OAuthController`, owned by the
+    /// view; this just persists the result.
     @MainActor
-    func signInWithClaude() async -> String? {
-        let controller = OAuthController()
-        let result: OAuthController.TokenResult? = await withCheckedContinuation { cont in
-            controller.startSignIn { cont.resume(returning: $0) }
-        }
-        guard let result else {
-            return controller.errorMessage  // nil when the user simply cancelled
-        }
+    func finishOAuthSignIn(_ result: OAuthController.TokenResult) async {
         let email = await client.fetchAccount(token: result.accessToken)
         let account = accountStore.add(label: email ?? "Claude",
                                        accessToken: result.accessToken,
@@ -255,7 +268,6 @@ final class UsageModel {
                                        email: email)
         reloadAccounts()
         setActiveAccount(account.id)
-        return nil
     }
 
     func removeAccount(id: String) {

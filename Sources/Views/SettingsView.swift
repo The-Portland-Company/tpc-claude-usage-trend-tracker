@@ -11,8 +11,6 @@ struct SettingsView: View {
     @State private var isValidating = false
     @State private var errorText: String?
     @State private var showPairingSheet = false
-    @State private var isSigningIn = false
-    @State private var signInError: String?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -43,42 +41,8 @@ struct SettingsView: View {
     // MARK: Sign in with Claude (OAuth)
 
     private var signInSection: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack {
-                Button {
-                    signIn()
-                } label: {
-                    HStack(spacing: 6) {
-                        if isSigningIn {
-                            ProgressView().controlSize(.small)
-                        } else {
-                            Image(systemName: "person.crop.circle.badge.plus")
-                        }
-                        Text("Sign in with Claude")
-                    }
-                    .font(.system(size: 12))
-                }
-                .disabled(isSigningIn)
-                Spacer()
-            }
-            if let signInError {
-                Text(signInError).font(.system(size: 11)).foregroundStyle(.red)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-        }
-        .padding(.top, 2)
-    }
-
-    private func signIn() {
-        isSigningIn = true
-        signInError = nil
-        Task {
-            let err = await model.signInWithClaude()
-            await MainActor.run {
-                isSigningIn = false
-                signInError = err
-            }
-        }
+        ClaudeSignInView(model: model)
+            .padding(.top, 2)
     }
 
     // MARK: Pairing

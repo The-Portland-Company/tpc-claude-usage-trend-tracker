@@ -1,40 +1,37 @@
 import Foundation
-import AuthenticationServices
 import CryptoKit
 import AppKit
 
 /// "Sign in with Claude" — Authorization Code + PKCE against Claude Code's
-/// public OAuth client. macOS port of ios/Sources/OAuthController.swift; see
-/// docs/auth-and-pairing-spec.md §1. The token this returns is the app's OWN
-/// token set (separate from any Claude Code install), so refreshing it later is
-/// safe and it works inside the App Store sandbox (stored in our own Keychain).
+/// public OAuth client, using the **manual copy-paste** flow.
+///
+/// The public client does NOT accept a custom `claudetracker://` redirect (the
+/// authorize page rejects it: "Redirect URI … is not supported by client"), so
+/// we use the same redirect Claude Code's CLI uses for headless sign-in:
+/// `https://console.anthropic.com/oauth/code/callback`, which displays the
+/// authorization code for the user to copy. We open the authorize URL in the
+/// user's browser, they approve and copy the shown `code#state`, and paste it
+/// back. No `ASWebAuthenticationSession` (which needs a custom scheme or an
+/// associated domain) is involved. See docs/auth-and-pairing-spec.md §1(b).
+///
+/// The token this produces is the app's OWN token set (separate from any Claude
+/// Code install), so refreshing it later is safe and it works inside the App
+/// Store sandbox (stored in our own Keychain).
 @MainActor
-final class OAuthController: NSObject, ObservableObject, ASWebAuthenticationPresentationContextProviding {
-    @Published var isPresenting = false
+final class OAuthController: ObservableObject {
+    /// True after the browser has been opened and we're waiting for the user to
+    /// paste the code. Drives the paste field in the UI.
+    @Published var isAwaitingCode = false
     @Published var errorMessage: String?
-    /// Set true when the system browser session couldn't complete (denied,
-    /// cancelled, or the client rejected our redirect) so the UI can offer
-    /// the manual "paste CODE#STATE" fallback from the spec.
-    @Published var needsManualFallback = false
 
     static let clientID = "9d1c250a-e61b-44d9-88ed-5944d1962f5e"
-    static let redirectURI = "claudetracker://oauth-callback"
+    static let redirectURI = "https://console.anthropic.com/oauth/code/callback"
     static let authorizeURL = URL(string: "https://claude.ai/oauth/authorize")!
     static let tokenURL = URL(string: "https://console.anthropic.com/v1/oauth/token")!
     static let scope = "user:profile user:inference"
 
-    private var session: ASWebAuthenticationSession?
-    /// A menu-bar (LSUIElement) app often has no visible window when the user
-    /// triggers sign-in, and `ASWebAuthenticationSession` needs a real anchor.
-    /// Hold a tiny off-screen window as a guaranteed anchor.
-    private var anchorWindow: NSWindow?
     private var codeVerifier: String?
     private var state: String?
-    private var timeoutTask: Task<Void, Never>?
-    private var userCancelled = false
-    private var timedOut = false
-
-    static let signInTimeout: TimeInterval = 90
 
     struct TokenResult {
         let accessToken: String
@@ -42,23 +39,12 @@ final class OAuthController: NSObject, ObservableObject, ASWebAuthenticationPres
         let expiresAt: Date?
     }
 
-    /// Aborts an in-flight sign-in (user tapped Cancel, or the caller is
-    /// tearing down). Resets straight back to idle with no error shown.
-    func cancel() {
-        guard isPresenting else { return }
-        userCancelled = true
-        session?.cancel()
-    }
-
-    /// Kicks off the browser-based flow. Calls `completion` with the
-    /// exchanged tokens on success, or leaves `needsManualFallback` set so
-    /// the caller can show the manual-paste field. Auto-cancels after
-    /// `signInTimeout` seconds if the browser never returns.
-    func startSignIn(completion: @escaping (TokenResult?) -> Void) {
+    /// Opens the Claude sign-in page in the default browser and switches the UI
+    /// into "paste the code" mode. Returns an error string if the URL couldn't
+    /// be built/opened, else nil.
+    @discardableResult
+    func beginBrowserSignIn() -> String? {
         errorMessage = nil
-        needsManualFallback = false
-        userCancelled = false
-        timedOut = false
 
         let verifier = Self.randomBase64URL(byteCount: 64)
         let challenge = Self.codeChallenge(for: verifier)
@@ -68,6 +54,7 @@ final class OAuthController: NSObject, ObservableObject, ASWebAuthenticationPres
 
         var components = URLComponents(url: Self.authorizeURL, resolvingAgainstBaseURL: false)!
         components.queryItems = [
+            URLQueryItem(name: "code", value: "true"),
             URLQueryItem(name: "client_id", value: Self.clientID),
             URLQueryItem(name: "response_type", value: "code"),
             URLQueryItem(name: "redirect_uri", value: Self.redirectURI),
@@ -77,86 +64,44 @@ final class OAuthController: NSObject, ObservableObject, ASWebAuthenticationPres
             URLQueryItem(name: "state", value: generatedState),
         ]
         guard let url = components.url else {
-            errorMessage = "Couldn't build the sign-in URL."
-            completion(nil)
-            return
+            let msg = "Couldn't build the sign-in URL."
+            errorMessage = msg
+            return msg
         }
-
-        isPresenting = true
-        let session = ASWebAuthenticationSession(url: url, callbackURLScheme: "claudetracker") { [weak self] callbackURL, error in
-            guard let self else { return }
-            Task { @MainActor in
-                self.timeoutTask?.cancel()
-                self.timeoutTask = nil
-                self.isPresenting = false
-                self.anchorWindow?.close()
-                self.anchorWindow = nil
-                if let callbackURL, error == nil {
-                    let result = await self.handleCallback(callbackURL)
-                    completion(result)
-                } else if self.userCancelled {
-                    // User explicitly cancelled: reset to idle, no error text.
-                    completion(nil)
-                } else if self.timedOut {
-                    self.errorMessage = "Sign-in timed out — try again, or use Pair with my Mac / Advanced."
-                    completion(nil)
-                } else {
-                    // Denied, or the client rejected our redirect. Fall back
-                    // to the manual CODE#STATE paste flow.
-                    self.needsManualFallback = true
-                    completion(nil)
-                }
-            }
-        }
-        session.presentationContextProvider = self
-        session.prefersEphemeralWebBrowserSession = true
-        self.session = session
-        // A menu-bar app may be inactive; ASWebAuthenticationSession needs the
-        // app active to present its browser sheet.
-        NSApp.activate(ignoringOtherApps: true)
-        session.start()
-
-        timeoutTask = Task { [weak self] in
-            try? await Task.sleep(nanoseconds: UInt64(Self.signInTimeout * 1_000_000_000))
-            guard let self, !Task.isCancelled else { return }
-            await MainActor.run {
-                guard self.isPresenting else { return }
-                self.timedOut = true
-                self.session?.cancel()
-            }
-        }
+        NSWorkspace.shared.open(url)
+        isAwaitingCode = true
+        return nil
     }
 
-    /// Manual fallback: user pastes "CODE#STATE" copied from the authorize
-    /// page. Splits, verifies state, and exchanges the same as the auto path.
+    func cancel() {
+        isAwaitingCode = false
+        errorMessage = nil
+        codeVerifier = nil
+        state = nil
+    }
+
+    /// The user pastes the code shown on the sign-in page. Accepts either
+    /// `CODE#STATE` (Claude shows both, separated by `#`) or a bare `CODE`
+    /// (we then trust the state we generated). Exchanges for tokens.
     func completeManualEntry(pasted: String) async -> TokenResult? {
         let trimmed = pasted.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            errorMessage = "Paste the code from the sign-in page first."
+            return nil
+        }
         let parts = trimmed.split(separator: "#", maxSplits: 1).map(String.init)
-        guard parts.count == 2 else {
-            errorMessage = "Expected the code in the form CODE#STATE."
-            return nil
-        }
-        return await exchange(code: parts[0], returnedState: parts[1])
-    }
-
-    private func handleCallback(_ url: URL) async -> TokenResult? {
-        guard let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
-              let items = components.queryItems,
-              let code = items.first(where: { $0.name == "code" })?.value,
-              let returnedState = items.first(where: { $0.name == "state" })?.value else {
-            errorMessage = "Sign-in didn't return a code."
-            return nil
-        }
+        let code = parts[0]
+        let returnedState = parts.count == 2 ? parts[1] : (state ?? "")
         return await exchange(code: code, returnedState: returnedState)
     }
 
     private func exchange(code: String, returnedState: String) async -> TokenResult? {
         guard let expectedState = state, returnedState == expectedState else {
-            errorMessage = "Sign-in state didn't match. Please try again."
+            errorMessage = "Sign-in code didn't match this session. Start sign-in again."
             return nil
         }
         guard let verifier = codeVerifier else {
-            errorMessage = "Missing PKCE verifier. Please try again."
+            errorMessage = "Missing PKCE verifier. Start sign-in again."
             return nil
         }
 
@@ -179,8 +124,12 @@ final class OAuthController: NSObject, ObservableObject, ASWebAuthenticationPres
 
         do {
             let (data, response) = try await URLSession.shared.data(for: request)
-            guard (200..<300).contains((response as? HTTPURLResponse)?.statusCode ?? -1) else {
-                errorMessage = "Sign-in failed. Please try again."
+            let status = (response as? HTTPURLResponse)?.statusCode ?? -1
+            #if DEBUG
+            NSLog("[CUTT-OAUTH] token exchange status=\(status) body=\(String(data: data, encoding: .utf8) ?? "<binary>")")
+            #endif
+            guard (200..<300).contains(status) else {
+                errorMessage = "Sign-in failed (the code may have expired). Try again."
                 return nil
             }
             struct R: Decodable {
@@ -190,6 +139,7 @@ final class OAuthController: NSObject, ObservableObject, ASWebAuthenticationPres
             }
             let r = try JSONDecoder().decode(R.self, from: data)
             let expiresAt = r.expires_in.map { Date().addingTimeInterval($0) }
+            isAwaitingCode = false
             return TokenResult(accessToken: r.access_token, refreshToken: r.refresh_token, expiresAt: expiresAt)
         } catch {
             errorMessage = "Sign-in failed. Please try again."
@@ -215,28 +165,5 @@ final class OAuthController: NSObject, ObservableObject, ASWebAuthenticationPres
             .replacingOccurrences(of: "+", with: "-")
             .replacingOccurrences(of: "/", with: "_")
             .replacingOccurrences(of: "=", with: "")
-    }
-
-    // MARK: ASWebAuthenticationPresentationContextProviding
-
-    func presentationAnchor(for session: ASWebAuthenticationSession) -> ASPresentationAnchor {
-        if let key = NSApplication.shared.windows.first(where: { $0.isKeyWindow && $0.isVisible }) {
-            return key
-        }
-        if let visible = NSApplication.shared.windows.first(where: { $0.isVisible }) {
-            return visible
-        }
-        // No usable window (menu-bar app with nothing open): make one.
-        if anchorWindow == nil {
-            let window = NSWindow(
-                contentRect: NSRect(x: 0, y: 0, width: 1, height: 1),
-                styleMask: [.borderless], backing: .buffered, defer: false)
-            window.isReleasedWhenClosed = false
-            window.level = .floating
-            window.alphaValue = 0
-            window.orderFrontRegardless()
-            anchorWindow = window
-        }
-        return anchorWindow!
     }
 }

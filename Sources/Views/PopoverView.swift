@@ -11,8 +11,6 @@ struct PopoverView: View {
     @State private var notifySession = false
     @State private var launchAtLogin = false
     @State private var launchError: String?
-    @State private var isSigningIn = false
-    @State private var signInError: String?
 
     private let tick = Timer.publish(every: 30, on: .main, in: .common).autoconnect()
 
@@ -97,40 +95,12 @@ struct PopoverView: View {
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
-            Button {
-                signIn()
-            } label: {
-                HStack(spacing: 6) {
-                    if isSigningIn {
-                        ProgressView().controlSize(.small)
-                    } else {
-                        Image(systemName: "person.crop.circle.badge.plus")
-                    }
-                    Text("Sign in with Claude")
-                }
-            }
-            .disabled(isSigningIn)
-            if let signInError {
-                Text(signInError).font(.system(size: 11)).foregroundStyle(.red)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
+            ClaudeSignInView(model: model, compact: true)
             Text("Or open Settings to pair with your Mac or paste a token.")
                 .font(.system(size: 10))
                 .foregroundStyle(.secondary)
         }
         .padding(.vertical, 4)
-    }
-
-    private func signIn() {
-        isSigningIn = true
-        signInError = nil
-        Task {
-            let err = await model.signInWithClaude()
-            await MainActor.run {
-                isSigningIn = false
-                signInError = err
-            }
-        }
     }
 
     /// Prefer the account's known email, else its label.
