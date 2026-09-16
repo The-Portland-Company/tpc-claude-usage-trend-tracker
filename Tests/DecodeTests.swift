@@ -70,6 +70,30 @@ final class DecodeTests: XCTestCase {
         XCTAssertNil(snapshot.extraUsage)
     }
 
+    func testMissingLimitsKeyDecodesEmpty() throws {
+        // Accounts without a Claude Code subscription can omit `limits`
+        // entirely; that must yield an empty snapshot, not a decode error.
+        let json = Data(#"{"extra_usage": null}"#.utf8)
+        let snapshot = try UsageClient.decode(json, fetchedAt: Date())
+        XCTAssertTrue(snapshot.limits.isEmpty)
+        XCTAssertNil(snapshot.extraUsage)
+    }
+
+    func testNullAndMissingLimitFieldsTolerated() throws {
+        // A limit missing `kind`/`percent` (or with them null) must not throw
+        // "The data couldn't be read because it is missing."
+        let json = """
+        {"limits": [{"group": "session", "percent": null},
+                    {"kind": "weekly_all"}]}
+        """.data(using: .utf8)!
+        let snapshot = try UsageClient.decode(json, fetchedAt: Date())
+        XCTAssertEqual(snapshot.limits.count, 2)
+        XCTAssertEqual(snapshot.limits[0].kind, "unknown")
+        XCTAssertEqual(snapshot.limits[0].percent, 0)
+        XCTAssertEqual(snapshot.limits[1].kind, "weekly_all")
+        XCTAssertEqual(snapshot.limits[1].percent, 0)
+    }
+
     func testCredentialDecodeMalformed() {
         XCTAssertThrowsError(try CredentialStore.decodeCredentials(Data("{}".utf8))) {
             XCTAssertEqual($0 as? CredentialError, .malformed)
