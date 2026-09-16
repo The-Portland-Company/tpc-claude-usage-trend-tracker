@@ -132,6 +132,23 @@ private struct UsageResponse: Decodable {
         let resets_at: Date?
         let scope: Scope?
         let is_active: Bool?
+
+        // Tolerant decode: accounts without a Claude Code subscription can
+        // return limits with a null/absent `kind` or `percent`. Fall back to
+        // sensible defaults rather than throwing "data couldn't be read".
+        enum CodingKeys: String, CodingKey {
+            case kind, group, percent, severity, resets_at, scope, is_active
+        }
+        init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            kind = (try? c.decodeIfPresent(String.self, forKey: .kind)) ?? "unknown"
+            group = try? c.decodeIfPresent(String.self, forKey: .group)
+            percent = (try? c.decodeIfPresent(Double.self, forKey: .percent)) ?? 0
+            severity = try? c.decodeIfPresent(String.self, forKey: .severity)
+            resets_at = try? c.decodeIfPresent(Date.self, forKey: .resets_at)
+            scope = try? c.decodeIfPresent(Scope.self, forKey: .scope)
+            is_active = try? c.decodeIfPresent(Bool.self, forKey: .is_active)
+        }
     }
 
     struct Extra: Decodable {
@@ -139,10 +156,28 @@ private struct UsageResponse: Decodable {
         let used_credits: Double
         let monthly_limit: Double
         let utilization: Double
+
+        enum CodingKeys: String, CodingKey {
+            case is_enabled, used_credits, monthly_limit, utilization
+        }
+        init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            is_enabled = (try? c.decodeIfPresent(Bool.self, forKey: .is_enabled)) ?? false
+            used_credits = (try? c.decodeIfPresent(Double.self, forKey: .used_credits)) ?? 0
+            monthly_limit = (try? c.decodeIfPresent(Double.self, forKey: .monthly_limit)) ?? 0
+            utilization = (try? c.decodeIfPresent(Double.self, forKey: .utilization)) ?? 0
+        }
     }
 
     let limits: [Limit]
     let extra_usage: Extra?
+
+    enum CodingKeys: String, CodingKey { case limits, extra_usage }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        limits = (try? c.decodeIfPresent([Limit].self, forKey: .limits)) ?? []
+        extra_usage = try? c.decodeIfPresent(Extra.self, forKey: .extra_usage)
+    }
 }
 
 // MARK: - Client
