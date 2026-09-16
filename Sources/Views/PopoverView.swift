@@ -51,8 +51,28 @@ struct PopoverView: View {
                     .foregroundStyle(.secondary)
                 refreshButton
             }
-            accountSwitcher
+            HStack(spacing: 6) {
+                accountSwitcher
+                if !model.hasNoAccounts, let billing = nextBillingText {
+                    Spacer(minLength: 6)
+                    HStack(spacing: 3) {
+                        Image(systemName: "creditcard").font(.system(size: 10))
+                        Text(billing).font(.system(size: 10)).lineLimit(1)
+                    }
+                    .foregroundStyle(.secondary)
+                    .help("Next billing cycle")
+                    .accessibilityLabel("Next billing cycle \(billing)")
+                }
+            }
         }
+    }
+
+    /// "Renews Sep 17"-style label for the active account's next billing date.
+    private var nextBillingText: String? {
+        guard let date = model.nextBillingDate else { return nil }
+        let f = DateFormatter()
+        f.dateFormat = "MMM d"
+        return "Renews " + f.string(from: date)
     }
 
     private var accountSwitcher: some View {
@@ -218,16 +238,15 @@ struct PopoverView: View {
             if let launchError {
                 Text(launchError).font(.system(size: 10)).foregroundStyle(.red)
             }
-            HStack {
-                Button("Open Claude Code") { openTerminalApp() }
-                Button("Settings…") {
+            HStack(spacing: 16) {
+                iconButton("terminal", help: "Open Claude Code") { openTerminalApp() }
+                iconButton("gearshape", help: "Settings") {
                     openWindow(id: "settings")
                     NSApp.activate(ignoringOtherApps: true)
                 }
                 Spacer()
-                Button("Quit") { NSApplication.shared.terminate(nil) }
+                iconButton("power", help: "Quit") { NSApplication.shared.terminate(nil) }
             }
-            .font(.system(size: 11))
             HStack {
                 Link(destination: URL(string: "https://theportlandcompany.com/apps")!) {
                     HStack(spacing: 4) {
@@ -241,16 +260,20 @@ struct PopoverView: View {
                 .foregroundStyle(.secondary)
                 Spacer()
             }
-            HStack {
-                Spacer()
-                Link("by The Portland Company", destination: URL(string: "https://theportlandcompany.com")!)
-                    .font(.system(size: 10))
-                    .foregroundStyle(.secondary)
-            }
         }
         .toggleStyle(.switch)
         .controlSize(.small)
         .font(.system(size: 11))
+    }
+
+    /// A borderless SF Symbol button with a hover tooltip, matching `refreshButton`.
+    private func iconButton(_ symbol: String, help: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: symbol).font(.system(size: 14))
+        }
+        .buttonStyle(.borderless)
+        .help(help)
+        .accessibilityLabel(help)
     }
 
     private func openTerminalApp() {

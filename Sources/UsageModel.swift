@@ -114,6 +114,36 @@ final class UsageModel {
     private(set) var account: String?
     var menuSeverity: PaceMath.Severity { buckets.map(\.severity).max() ?? .normal }
 
+    /// Per-account subscription start date (`organization.subscription_created_at`
+    /// from /oauth/profile). The monthly billing cycle anchors to its day.
+    private var billingAnchors: [String: Date] = [:]
+
+    /// The active account's next monthly billing date (the next occurrence of
+    /// the subscription's day-of-month, today included). Nil until the profile
+    /// with a subscription anchor has been fetched.
+    var nextBillingDate: Date? {
+        billingAnchors[activeAccountID].flatMap { Self.nextMonthlyBilling(anchor: $0, from: Date()) }
+    }
+
+    /// The next monthly anniversary of `anchor`'s day-of-month on/after `now`.
+    /// Days past the end of a short month clamp to that month's last day.
+    static func nextMonthlyBilling(anchor: Date, from now: Date) -> Date? {
+        let cal = Calendar(identifier: .gregorian)
+        let anchorDay = cal.component(.day, from: anchor)
+        let base = cal.dateComponents([.year, .month], from: now)
+        for offset in 0...12 {
+            var c = DateComponents()
+            c.year = base.year
+            c.month = (base.month ?? 1) + offset
+            guard let firstOfMonth = cal.date(from: c),
+                  let range = cal.range(of: .day, in: .month, for: firstOfMonth) else { continue }
+            c.day = min(anchorDay, range.count)
+            guard let candidate = cal.date(from: c) else { continue }
+            if cal.startOfDay(for: candidate) >= cal.startOfDay(for: now) { return candidate }
+        }
+        return nil
+    }
+
     // MARK: Accounts (multi-account)
     private(set) var accounts: [Account] = []
     private(set) var activeAccountID: String = Account.primaryID
@@ -333,10 +363,13 @@ final class UsageModel {
         isRefreshing = true
         defer { isRefreshing = false }
         let id = activeAccountID
-        if account == nil {
+        if account == nil || billingAnchors[id] == nil {
             if let token = try? await accountStore.resolveToken(for: id),
-               let a = await client.fetchAccount(token: token) {
-                account = a; accountStore.setEmail(a, for: id)
+               let profile = await client.fetchProfile(token: token) {
+                if let a = profile.email {
+                    account = a; accountStore.setEmail(a, for: id)
+                }
+                if let anchor = profile.subscriptionCreatedAt { billingAnchors[id] = anchor }
             }
         }
         let now = Date()
