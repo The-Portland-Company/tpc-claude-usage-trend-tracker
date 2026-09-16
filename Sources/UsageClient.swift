@@ -234,14 +234,34 @@ final class UsageClient {
 
     /// Best-effort account email for an explicit token. Never throws.
     func fetchAccount(token: String) async -> String? {
+        await fetchProfile(token: token)?.email
+    }
+
+    /// The subset of `/oauth/profile` the app uses.
+    struct Profile {
+        let email: String?
+        /// When the Stripe subscription began; the billing cycle anchors to this
+        /// day of the month.
+        let subscriptionCreatedAt: Date?
+    }
+
+    /// Best-effort profile (email + subscription anchor). Never throws.
+    func fetchProfile(token: String) async -> Profile? {
         var request = URLRequest(url: Self.profileEndpoint)
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         request.setValue("oauth-2025-04-20", forHTTPHeaderField: "anthropic-beta")
         request.setValue(Self.userAgent, forHTTPHeaderField: "User-Agent")
         guard let (data, resp) = try? await session.data(for: request),
               (200..<300).contains((resp as? HTTPURLResponse)?.statusCode ?? -1) else { return nil }
-        struct P: Decodable { struct A: Decodable { let email: String? }; let account: A? }
-        return (try? JSONDecoder().decode(P.self, from: data))?.account?.email
+        struct P: Decodable {
+            struct A: Decodable { let email: String? }
+            struct O: Decodable { let subscription_created_at: String? }
+            let account: A?
+            let organization: O?
+        }
+        guard let p = try? JSONDecoder().decode(P.self, from: data) else { return nil }
+        let anchor = p.organization?.subscription_created_at.flatMap(Self.isoDate)
+        return Profile(email: p.account?.email, subscriptionCreatedAt: anchor)
     }
 
     /// Network-free decode, so tests can run against a fixture.

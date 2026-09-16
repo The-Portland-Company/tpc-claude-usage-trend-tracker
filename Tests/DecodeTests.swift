@@ -94,6 +94,32 @@ final class DecodeTests: XCTestCase {
         XCTAssertEqual(snapshot.limits[1].percent, 0)
     }
 
+    func testNextMonthlyBilling() {
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = TimeZone(secondsFromGMT: 0)!
+        func date(_ y: Int, _ m: Int, _ d: Int) -> Date {
+            cal.date(from: DateComponents(year: y, month: m, day: d, hour: 12))!
+        }
+        let anchor = date(2025, 7, 17) // subscription started on the 17th
+
+        // Before the 17th this month → this month's 17th.
+        let a = UsageModel.nextMonthlyBilling(anchor: anchor, from: date(2026, 9, 16))
+        XCTAssertEqual(cal.dateComponents([.year, .month, .day], from: a!),
+                       DateComponents(year: 2026, month: 9, day: 17))
+        // On the 17th → today.
+        let b = UsageModel.nextMonthlyBilling(anchor: anchor, from: date(2026, 9, 17))
+        XCTAssertEqual(cal.component(.day, from: b!), 17)
+        XCTAssertEqual(cal.component(.month, from: b!), 9)
+        // After the 17th → next month's 17th.
+        let c = UsageModel.nextMonthlyBilling(anchor: anchor, from: date(2026, 9, 18))
+        XCTAssertEqual(cal.dateComponents([.year, .month, .day], from: c!),
+                       DateComponents(year: 2026, month: 10, day: 17))
+        // Day-31 anchor clamps to February's last day.
+        let eom = UsageModel.nextMonthlyBilling(anchor: date(2025, 1, 31), from: date(2026, 2, 1))
+        XCTAssertEqual(cal.dateComponents([.year, .month, .day], from: eom!),
+                       DateComponents(year: 2026, month: 2, day: 28))
+    }
+
     func testCredentialDecodeMalformed() {
         XCTAssertThrowsError(try CredentialStore.decodeCredentials(Data("{}".utf8))) {
             XCTAssertEqual($0 as? CredentialError, .malformed)
