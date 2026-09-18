@@ -31,6 +31,9 @@ enum PaceMath {
     /// Returns nil when the kind has no known window length or `resetsAt` is missing.
     static func project(percent: Double, kind: String, resetsAt: Date?, now: Date) -> Projection? {
         guard let length = windowLength(forKind: kind), let resetsAt else { return nil }
+        // At or over the limit there is nothing left to predict: no run-out time,
+        // no over-pace alert. The UI shows "Over Limit" instead.
+        guard percent < 100 else { return nil }
         let start = resetsAt.addingTimeInterval(-length)
         let elapsed = now.timeIntervalSince(start)
         // Clamp: right after a reset the fraction is ~0 and a tiny percent would project to infinity.
