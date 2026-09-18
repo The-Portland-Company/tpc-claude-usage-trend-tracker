@@ -160,6 +160,9 @@ final class UsageModel {
         guard let w = buckets.first(where: { $0.kind == "weekly_all" }) else {
             return lastError ?? "Waiting for first reading…"
         }
+        if w.percent >= 100 {
+            return "You're over the weekly limit."
+        }
         if let p = w.projection, p.overPace, let h = p.hits100At {
             let f = DateFormatter(); f.dateFormat = "EEEE, MMM d 'at' h:mm a"
             return "You're going to run out by \(f.string(from: h))."

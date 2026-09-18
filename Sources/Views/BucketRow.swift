@@ -68,9 +68,12 @@ struct BucketRow: View {
         if let resetsAt {
             parts.append("Resets \(PaceMath.countdown(to: resetsAt, from: now))")
         }
-        if let p = projection {
+        if percent >= 100 {
+            parts.append("Over Limit")
+        } else if let p = projection {
             if let hit = p.hits100At {
-                parts.append("→ 100% \(Self.stamp.string(from: hit))")
+                // "runs out", not "→ 100%": this is a projected exhaustion time, not the reset.
+                parts.append("runs out \(Self.stamp.string(from: hit))")
             } else {
                 parts.append("→ ~\(Int(p.projectedAtReset.rounded()))% at reset")
             }

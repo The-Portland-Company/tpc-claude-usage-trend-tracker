@@ -24,6 +24,14 @@ final class PaceMathTests: XCTestCase {
         XCTAssertEqual(p.hits100At!, iso.date(from: "2026-09-07T01:00:00Z")!)
     }
 
+    func testOverLimitHasNoProjection() {
+        // At/over 100% there is nothing to predict: no run-out time, no over-pace alert.
+        let reset = iso.date(from: "2026-09-09T01:00:00Z")!
+        let now = iso.date(from: "2026-09-04T01:00:00Z")!
+        XCTAssertNil(PaceMath.project(percent: 100, kind: "weekly_all", resetsAt: reset, now: now))
+        XCTAssertNil(PaceMath.project(percent: 140, kind: "weekly_all", resetsAt: reset, now: now))
+    }
+
     func testSessionWindowIsFiveHours() {
         XCTAssertEqual(PaceMath.windowLength(forKind: "session"), 5 * 3600)
         XCTAssertEqual(PaceMath.windowLength(forKind: "weekly_scoped"), 7 * 86400)
