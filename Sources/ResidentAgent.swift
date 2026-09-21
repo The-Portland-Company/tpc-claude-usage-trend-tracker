@@ -55,4 +55,39 @@ enum ResidentAgent {
         }
         instanceLock = fd
     }
+
+    /// Drops the single-instance lock so launchd's copy can take it.
+    ///
+    /// Only used on the launch that first registers the relaunch agent. Without this
+    /// the copy the user just opened keeps the lock, launchd's `RunAtLoad` copy finds
+    /// it held and exits 0, and — because `KeepAlive` is scoped to abnormal exits —
+    /// the job then sits idle. The app stays unprotected until the next login, which
+    /// is exactly the window this whole fix exists to close.
+    ///
+    /// Must be called *before* registering, so launchd's copy finds the lock free.
+    static func releaseInstanceLock() {
+        guard instanceLock >= 0 else { return }
+        flock(instanceLock, LOCK_UN)
+        close(instanceLock)
+        instanceLock = -1
+    }
+
+    /// Takes the lock back when a handover did not happen after all, so a failed
+    /// registration leaves the app resident rather than running unguarded.
+    /// Returns false if another process has since taken it.
+    @discardableResult
+    static func reacquireInstanceLock() -> Bool {
+        guard instanceLock < 0 else { return true }
+        guard let support = FileManager.default.urls(
+            for: .applicationSupportDirectory, in: .userDomainMask).first else { return false }
+        let lock = support.appendingPathComponent(".single-instance.lock")
+        let fd = open(lock.path, O_CREAT | O_RDWR, 0o644)
+        guard fd >= 0 else { return false }
+        if flock(fd, LOCK_EX | LOCK_NB) != 0 {
+            close(fd)
+            return false
+        }
+        instanceLock = fd
+        return true
+    }
 }

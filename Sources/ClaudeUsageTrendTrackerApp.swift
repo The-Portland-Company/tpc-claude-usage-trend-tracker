@@ -12,7 +12,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Move an existing login-item registration onto the bundled launch agent,
         // which relaunches us if macOS kills the app mid-session. One-time, no-ops after.
         LaunchAtLogin.migrateFromLoginItem()
-        LaunchAtLogin.enableOnFirstLaunch()
+        // First launch after install: hand the resident role to launchd rather than
+        // keeping it here. Registering starts launchd's own copy via RunAtLoad, but
+        // only if it can take the single-instance lock — so drop the lock first, then
+        // step aside. Skipping this leaves the agent registered but idle, and the app
+        // unprotected until the next login.
+        if LaunchAtLogin.needsFirstLaunchRegistration {
+            ResidentAgent.releaseInstanceLock()
+            if LaunchAtLogin.enableOnFirstLaunch() {
+                exit(0)
+            }
+            ResidentAgent.reacquireInstanceLock()   // registration failed; stay resident
+        }
         ProcessInfo.processInfo.disableSuddenTermination()
         ProcessInfo.processInfo.disableAutomaticTermination("Menu bar agent must stay resident to track usage")
         activity = ProcessInfo.processInfo.beginActivity(

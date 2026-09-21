@@ -40,6 +40,13 @@ enum LaunchAtLogin {
         }
     }
 
+    private static let autoRegisteredKey = "relauncherAutoRegistered"
+
+    /// True on the one launch per install where the agent still has to be registered.
+    static var needsFirstLaunchRegistration: Bool {
+        !UserDefaults.standard.bool(forKey: autoRegisteredKey) && service.status != .enabled
+    }
+
     /// Registers the relaunch agent once per install, without waiting for the user
     /// to find the "Launch at login" toggle.
     ///
@@ -51,13 +58,13 @@ enum LaunchAtLogin {
     /// the toggle still turns both off together.
     ///
     /// Runs exactly once: the flag is written before registering, so a user who turns
-    /// the toggle back off is not overridden on the next launch.
-    static func enableOnFirstLaunch() {
-        let key = "relauncherAutoRegistered"
-        guard !UserDefaults.standard.bool(forKey: key) else { return }
-        UserDefaults.standard.set(true, forKey: key)
-        guard service.status != .enabled else { return }
-        set(true)
+    /// the toggle back off is not overridden on the next launch. Returns whether the
+    /// agent is registered afterwards.
+    @discardableResult
+    static func enableOnFirstLaunch() -> Bool {
+        guard needsFirstLaunchRegistration else { return false }
+        UserDefaults.standard.set(true, forKey: autoRegisteredKey)
+        return set(true) == nil
     }
 
     /// One-time move off the old login-item registration. Without this, a user who
