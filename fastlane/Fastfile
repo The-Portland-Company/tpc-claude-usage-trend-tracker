@@ -1,0 +1,58 @@
+# Release tooling for Claude Usage Trend Tracker.
+#
+# The archive/export work still lives in scripts/build-testflight.sh — this file
+# only wraps it so the tracker ships through the same standard fastlane path as
+# Snap Shoot Share rather than a bespoke xcodebuild upload invocation.
+
+API_KEY_PATH = File.expand_path("~/.appstoreconnect/private_keys/AuthKey_XG3FW9LT9Q.p8")
+
+API_KEY = lambda {
+  app_store_connect_api_key(
+    key_id: "XG3FW9LT9Q",
+    issuer_id: "178bab61-1c45-4f62-9525-55f8ed15a98d",
+    key_filepath: API_KEY_PATH,
+    in_house: false
+  )
+}
+
+BUNDLE_ID = "com.theportlandcompany.ClaudeMeter"
+PROJECT_ROOT = File.expand_path("..", __dir__)
+
+def project_version(key)
+  File.read(File.join(PROJECT_ROOT, "project.yml"))[/#{key}:\s*"([^"]+)"/, 1]
+end
+
+platform :mac do
+  desc "Archive, export a signed .pkg, and upload it to TestFlight"
+  lane :beta do
+    version = project_version("MARKETING_VERSION")
+    build = project_version("CURRENT_PROJECT_VERSION")
+    UI.message("Releasing #{version} (#{build})")
+
+    sh("cd '#{PROJECT_ROOT}' && scripts/build-testflight.sh")
+
+    pkg = File.join(PROJECT_ROOT, "dist", "ClaudeUsageTrendTracker-#{version}-#{build}.pkg")
+    UI.user_error!("expected package missing: #{pkg}") unless File.exist?(pkg)
+
+    upload_to_testflight(
+      api_key: API_KEY.call,
+      pkg: pkg,
+      skip_waiting_for_build_processing: true,
+      app_identifier: BUNDLE_ID
+    )
+  end
+
+  desc "List TestFlight builds for this app"
+  lane :tf_status do
+    require 'spaceship'
+    Spaceship::ConnectAPI.token = Spaceship::ConnectAPI::Token.create(
+      key_id: "XG3FW9LT9Q",
+      issuer_id: "178bab61-1c45-4f62-9525-55f8ed15a98d",
+      filepath: API_KEY_PATH
+    )
+    app = Spaceship::ConnectAPI::App.find(BUNDLE_ID)
+    app.get_builds(includes: "preReleaseVersion").first(10).each do |b|
+      UI.message("  #{b.pre_release_version&.version}(#{b.version}) state=#{b.processing_state} uploaded=#{b.uploaded_date}")
+    end
+  end
+end
