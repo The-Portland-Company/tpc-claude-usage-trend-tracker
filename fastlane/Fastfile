@@ -39,13 +39,15 @@ platform :mac do
       api_key: API_KEY.call,
       pkg: pkg,
       app_identifier: BUNDLE_ID,
-      # Builds 15-17 uploaded fine but sat at READY_FOR_BETA_TESTING because
-      # nothing ever added them to a group, so TestFlight kept offering build 14.
-      # Waiting for processing is what lets pilot do the group assignment.
+      # Wait for processing so `distribute` below has a VALID build to attach.
       skip_waiting_for_build_processing: false,
-      distribute_external: false,
-      groups: [INTERNAL_GROUP]
+      # pilot's own `groups:` routes through the external-testing submission path and
+      # fails with "Missing required information to submit for external testing" even
+      # for an internal group. `distribute` does the internal assignment directly.
+      skip_submission: true
     )
+
+    distribute
   end
 
   desc "Add the newest processed build to the internal tester group"
