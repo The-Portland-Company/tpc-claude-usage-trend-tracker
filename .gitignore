@@ -12,3 +12,6 @@ android/app/build/
 android/local.properties
 android/.idea/
 android/captures/
+logs/
+fastlane/README.md
+fastlane/report.xml
