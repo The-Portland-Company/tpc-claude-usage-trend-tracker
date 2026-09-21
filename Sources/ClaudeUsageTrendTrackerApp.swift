@@ -12,6 +12,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Move an existing login-item registration onto the bundled launch agent,
         // which relaunches us if macOS kills the app mid-session. One-time, no-ops after.
         LaunchAtLogin.migrateFromLoginItem()
+        LaunchAtLogin.enableOnFirstLaunch()
         ProcessInfo.processInfo.disableSuddenTermination()
         ProcessInfo.processInfo.disableAutomaticTermination("Menu bar agent must stay resident to track usage")
         activity = ProcessInfo.processInfo.beginActivity(

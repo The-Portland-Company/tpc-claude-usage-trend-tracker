@@ -16,6 +16,7 @@ API_KEY = lambda {
 }
 
 BUNDLE_ID = "com.theportlandcompany.ClaudeMeter"
+INTERNAL_GROUP = "Internal Testers"
 PROJECT_ROOT = File.expand_path("..", __dir__)
 
 def project_version(key)
@@ -37,9 +38,55 @@ platform :mac do
     upload_to_testflight(
       api_key: API_KEY.call,
       pkg: pkg,
-      skip_waiting_for_build_processing: true,
-      app_identifier: BUNDLE_ID
+      app_identifier: BUNDLE_ID,
+      # Builds 15-17 uploaded fine but sat at READY_FOR_BETA_TESTING because
+      # nothing ever added them to a group, so TestFlight kept offering build 14.
+      # Waiting for processing is what lets pilot do the group assignment.
+      skip_waiting_for_build_processing: false,
+      distribute_external: false,
+      groups: [INTERNAL_GROUP]
     )
+  end
+
+  desc "Add the newest processed build to the internal tester group"
+  lane :distribute do
+    require 'spaceship'
+    Spaceship::ConnectAPI.token = Spaceship::ConnectAPI::Token.create(
+      key_id: "XG3FW9LT9Q",
+      issuer_id: "178bab61-1c45-4f62-9525-55f8ed15a98d",
+      filepath: API_KEY_PATH
+    )
+    app = Spaceship::ConnectAPI::App.find(BUNDLE_ID)
+    group = app.get_beta_groups.find { |g| g.name == INTERNAL_GROUP }
+    UI.user_error!("no group named #{INTERNAL_GROUP}") if group.nil?
+    build = app.get_builds(includes: "preReleaseVersion,buildBetaDetail")
+               .find { |b| b.processing_state == "VALID" }
+    UI.user_error!("no VALID build") if build.nil?
+    UI.message("adding #{build.pre_release_version&.version}(#{build.version}) to #{INTERNAL_GROUP}")
+    build.add_beta_groups(beta_groups: [group])
+    UI.success("distributed")
+  end
+
+  desc "Diagnose why builds are not reaching TestFlight"
+  lane :tf_detail do
+    require 'spaceship'
+    Spaceship::ConnectAPI.token = Spaceship::ConnectAPI::Token.create(
+      key_id: "XG3FW9LT9Q",
+      issuer_id: "178bab61-1c45-4f62-9525-55f8ed15a98d",
+      filepath: API_KEY_PATH
+    )
+    ["com.theportlandcompany.ClaudeMeter", "com.spencerhill.screenshoter"].each do |bid|
+      app = Spaceship::ConnectAPI::App.find(bid)
+      UI.message("=== #{bid} (#{app.name}) ===")
+      app.get_beta_groups.each do |g|
+        UI.message("  group: #{g.name} internal=#{g.is_internal_group} id=#{g.id}")
+      end
+      app.get_builds(includes: "preReleaseVersion,buildBetaDetail").first(3).each do |b|
+        d = b.build_beta_detail
+        UI.message("  #{b.pre_release_version&.version}(#{b.version}) proc=#{b.processing_state} " \
+                   "internal=#{d&.internal_build_state} external=#{d&.external_build_state}")
+      end
+    end
   end
 
   desc "List TestFlight builds for this app"

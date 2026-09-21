@@ -40,6 +40,26 @@ enum LaunchAtLogin {
         }
     }
 
+    /// Registers the relaunch agent once per install, without waiting for the user
+    /// to find the "Launch at login" toggle.
+    ///
+    /// The agent is the only thing that brings the app back after macOS kills it to
+    /// reclaim container cache, so leaving it off by default meant the default install
+    /// had no protection at all — the exact failure this was built to end. Because the
+    /// agent carries `RunAtLoad`, enabling it also starts the app at login; for a menu
+    /// bar app whose job is to always be present that is the intended behaviour, and
+    /// the toggle still turns both off together.
+    ///
+    /// Runs exactly once: the flag is written before registering, so a user who turns
+    /// the toggle back off is not overridden on the next launch.
+    static func enableOnFirstLaunch() {
+        let key = "relauncherAutoRegistered"
+        guard !UserDefaults.standard.bool(forKey: key) else { return }
+        UserDefaults.standard.set(true, forKey: key)
+        guard service.status != .enabled else { return }
+        set(true)
+    }
+
     /// One-time move off the old login-item registration. Without this, a user who
     /// upgrades keeps the `mainApp` login item *and* gains the agent, and both fire at
     /// login — two copies of the app, two menu bar icons.
