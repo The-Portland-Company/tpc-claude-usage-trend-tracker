@@ -42,29 +42,58 @@ enum LaunchAtLogin {
 
     private static let autoRegisteredKey = "relauncherAutoRegistered"
 
-    /// True on the one launch per install where the agent still has to be registered.
-    static var needsFirstLaunchRegistration: Bool {
-        !UserDefaults.standard.bool(forKey: autoRegisteredKey) && service.status != .enabled
+    /// True when *this* process is the copy launchd started from the bundled agent.
+    ///
+    /// launchd puts the job's label in `XPC_SERVICE_NAME`; a copy opened from Finder,
+    /// the Dock or LaunchServices has no such variable. This is what tells the app
+    /// whether the resident role is already filled or still has to be handed over.
+    static var isLaunchdCopy: Bool {
+        ProcessInfo.processInfo.environment["XPC_SERVICE_NAME"] == plistName.replacingOccurrences(of: ".plist", with: "")
     }
 
-    /// Registers the relaunch agent once per install, without waiting for the user
-    /// to find the "Launch at login" toggle.
+    /// Re-points launchd at the bundle that is on disk right now.
     ///
-    /// The agent is the only thing that brings the app back after macOS kills it to
-    /// reclaim container cache, so leaving it off by default meant the default install
-    /// had no protection at all — the exact failure this was built to end. Because the
-    /// agent carries `RunAtLoad`, enabling it also starts the app at login; for a menu
-    /// bar app whose job is to always be present that is the intended behaviour, and
-    /// the toggle still turns both off together.
-    ///
-    /// Runs exactly once: the flag is written before registering, so a user who turns
-    /// the toggle back off is not overridden on the next launch. Returns whether the
-    /// agent is registered afterwards.
+    /// `register()` is a no-op once the service is enabled — it does *not* refresh the
+    /// executable path launchd recorded the first time. So after the app is replaced
+    /// (a TestFlight or App Store update, or a move to a different folder) launchd keeps
+    /// the old path, fails to spawn with `EX_CONFIG`, and the agent silently stops
+    /// protecting the app while `status` still reads `.enabled`. Unregistering first
+    /// forces launchd to record the current bundle.
     @discardableResult
-    static func enableOnFirstLaunch() -> Bool {
-        guard needsFirstLaunchRegistration else { return false }
+    static func refreshRegistration() -> Bool {
+        if service.status == .enabled {
+            try? service.unregister()
+        }
+        do {
+            try service.register()
+            return true
+        } catch {
+            return false
+        }
+    }
+
+    /// Whether this launch should register the agent and step aside for launchd.
+    ///
+    /// Reached only when no other copy holds the single-instance lock, so this is
+    /// exactly the case where launchd is *not* running the app and something has to
+    /// put that right. The one exception is a user who turned the toggle off: they
+    /// have been auto-registered once already and chose to disable it, so the app
+    /// stays a plain foreground copy.
+    static var shouldHandOverToLaunchd: Bool {
+        if isLaunchdCopy { return false }
+        if UserDefaults.standard.bool(forKey: autoRegisteredKey) {
+            return service.status == .enabled
+        }
+        return true
+    }
+
+    /// Hands the resident role to launchd. Returns whether the agent is now registered
+    /// against the current bundle; the caller exits on success so launchd's `RunAtLoad`
+    /// copy is the only one left.
+    @discardableResult
+    static func handOverToLaunchd() -> Bool {
         UserDefaults.standard.set(true, forKey: autoRegisteredKey)
-        return set(true) == nil
+        return refreshRegistration()
     }
 
     /// One-time move off the old login-item registration. Without this, a user who
