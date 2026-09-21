@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Label</key>
+	<string>com.theportlandcompany.ClaudeMeter.Relauncher</string>
+
+	<!-- Path inside this app bundle. launchd owns the process, so it can bring
+	     the menu bar item back without the user logging out and in again. -->
+	<key>BundleProgram</key>
+	<string>Contents/MacOS/Claude Usage Trend Tracker</string>
+
+	<key>AssociatedBundleIdentifiers</key>
+	<array>
+		<string>com.theportlandcompany.ClaudeMeter</string>
+	</array>
+
+	<!-- Start at login, the same as the old login item did. -->
+	<key>RunAtLoad</key>
+	<true/>
+
+	<!-- Relaunch only on an abnormal exit. A user Quit exits 0 and stays quit;
+	     a SIGKILL from cache_delete, jetsam, or a crash comes back. -->
+	<key>KeepAlive</key>
+	<dict>
+		<key>SuccessfulExit</key>
+		<false/>
+	</dict>
+
+	<key>ThrottleInterval</key>
+	<integer>10</integer>
+
+	<!-- GUI session only, and ask RunningBoard to treat us as interactive so we
+	     are a less attractive target for reclaim in the first place. -->
+	<key>LimitLoadToSessionType</key>
+	<string>Aqua</string>
+	<key>ProcessType</key>
+	<string>Interactive</string>
+</dict>
+</plist>

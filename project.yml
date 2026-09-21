@@ -12,7 +12,7 @@ settings:
   base:
     SWIFT_VERSION: "5.9"
     MACOSX_DEPLOYMENT_TARGET: "14.0"
-    CURRENT_PROJECT_VERSION: "16"
+    CURRENT_PROJECT_VERSION: "17"
     MARKETING_VERSION: "1.0"
 
 targets:
@@ -25,6 +25,15 @@ targets:
           - "Info.plist"
           - "ClaudeUsageTrendTracker.entitlements"
           - "ClaudeUsageTrendTracker-AppStore.entitlements"
+          # Copied to Contents/Library/LaunchAgents below, not to Resources.
+          - "LaunchAgents/**"
+      # SMAppService.agent(plistName:) only looks in Contents/Library/LaunchAgents.
+      # This is what lets launchd bring the menu bar item back after macOS kills us.
+      - path: Sources/LaunchAgents/com.theportlandcompany.ClaudeMeter.Relauncher.plist
+        buildPhase:
+          copyFiles:
+            destination: wrapper
+            subpath: Contents/Library/LaunchAgents
     settings:
       base:
         PRODUCT_NAME: "Claude Usage Trend Tracker"

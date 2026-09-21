@@ -9,6 +9,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var activity: NSObjectProtocol?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // Move an existing login-item registration onto the bundled launch agent,
+        // which relaunches us if macOS kills the app mid-session. One-time, no-ops after.
+        LaunchAtLogin.migrateFromLoginItem()
         ProcessInfo.processInfo.disableSuddenTermination()
         ProcessInfo.processInfo.disableAutomaticTermination("Menu bar agent must stay resident to track usage")
         activity = ProcessInfo.processInfo.beginActivity(
@@ -22,8 +25,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 @main
 struct ClaudeUsageTrendTrackerApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
-    @State private var model = UsageModel()
+    @State private var model: UsageModel
     @State private var started = false
+
+    init() {
+        // Must run before anything touches `URLSession.shared` — it snapshots
+        // `URLCache.shared` on first use, and UsageModel builds a UsageClient off it.
+        ResidentAgent.exitIfAlreadyRunning()
+        ResidentAgent.disableURLCache()
+        _model = State(initialValue: UsageModel())
+    }
 
     var body: some Scene {
         MenuBarExtra {
