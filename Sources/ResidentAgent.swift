@@ -23,31 +23,36 @@ enum ResidentAgent {
         URLCache.shared = URLCache(memoryCapacity: 0, diskCapacity: 0, directory: nil)
     }
 
+    /// Held for the lifetime of the process — releasing it would let a second copy in.
+    nonisolated(unsafe) private static var instanceLock: Int32 = -1
+
     /// Guards against two menu bar icons.
     ///
     /// The relaunch agent starts the executable through launchd, which bypasses the
-    /// single-instance behaviour LaunchServices gives a normal `.app` double-click.
-    /// If a copy is already up, the newer one hands off and exits 0 — a clean exit, so
-    /// launchd does not treat it as a failure and try again.
+    /// single-instance behaviour LaunchServices gives a normal `.app` double-click. The
+    /// window is real: registering the agent makes launchd honour `RunAtLoad`
+    /// immediately, so the copy that just registered it gets a twin seconds later.
     ///
-    /// Scoped to *this same bundle on disk*. Matching on bundle identifier alone would
-    /// also stand down for a separate copy that happens to share the id — a test host,
-    /// or a local build sitting beside the App Store one — and refuse to launch it.
+    /// This used to ask `NSRunningApplication`, which is not dependable this early —
+    /// a launchd-exec'd process has no complete LaunchServices record yet, so the check
+    /// read as "nobody else is running" and both copies stayed up. An advisory file lock
+    /// answers correctly regardless of AppKit state, and the kernel drops it however the
+    /// holder dies, including the SIGKILL this whole fix exists to survive.
+    ///
+    /// The newcomer exits 0 — a clean exit, so launchd does not count it as a failure
+    /// and try again.
     static func exitIfAlreadyRunning() {
-        guard let bundleID = Bundle.main.bundleIdentifier else { return }
-        let me = NSRunningApplication.current
-        guard let myURL = me.bundleURL?.resolvingSymlinksInPath().standardizedFileURL else { return }
-        let twins = NSRunningApplication.runningApplications(withBundleIdentifier: bundleID)
-            .filter { $0.processIdentifier != me.processIdentifier }
-            .filter { $0.bundleURL?.resolvingSymlinksInPath().standardizedFileURL == myURL }
-        // Compare launch dates so two simultaneous starts can't both stand down.
-        let incumbent = twins.first { other in
-            guard let theirs = other.launchDate, let mine = me.launchDate else {
-                return other.processIdentifier < me.processIdentifier
-            }
-            return theirs < mine
+        guard let support = FileManager.default.urls(
+            for: .applicationSupportDirectory, in: .userDomainMask).first else { return }
+        try? FileManager.default.createDirectory(at: support, withIntermediateDirectories: true)
+        let lock = support.appendingPathComponent(".single-instance.lock")
+
+        let fd = open(lock.path, O_CREAT | O_RDWR, 0o644)
+        guard fd >= 0 else { return }          // Can't lock: let the app start rather than fail closed.
+        if flock(fd, LOCK_EX | LOCK_NB) != 0 { // EWOULDBLOCK: someone else holds it.
+            close(fd)
+            exit(0)
         }
-        guard incumbent != nil else { return }
-        exit(0)
+        instanceLock = fd
     }
 }
