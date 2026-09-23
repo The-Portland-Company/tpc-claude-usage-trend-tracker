@@ -72,6 +72,7 @@ struct PopoverView: View {
         guard let date = model.nextBillingDate else { return nil }
         let f = DateFormatter()
         f.dateFormat = "MMM d"
+        f.timeZone = UsageModel.billingTimeZone
         return "Renews " + f.string(from: date)
     }
 

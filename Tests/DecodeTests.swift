@@ -114,6 +114,11 @@ final class DecodeTests: XCTestCase {
         let c = UsageModel.nextMonthlyBilling(anchor: anchor, from: date(2026, 9, 18))
         XCTAssertEqual(cal.dateComponents([.year, .month, .day], from: c!),
                        DateComponents(year: 2026, month: 10, day: 17))
+        // An early-UTC anchor keeps its UTC day in any local time zone.
+        let early = cal.date(from: DateComponents(year: 2025, month: 7, day: 17, hour: 5, minute: 13))!
+        let d = UsageModel.nextMonthlyBilling(anchor: early, from: date(2026, 9, 22))
+        XCTAssertEqual(cal.dateComponents([.year, .month, .day], from: d!),
+                       DateComponents(year: 2026, month: 10, day: 17))
         // Day-31 anchor clamps to February's last day.
         let eom = UsageModel.nextMonthlyBilling(anchor: date(2025, 1, 31), from: date(2026, 2, 1))
         XCTAssertEqual(cal.dateComponents([.year, .month, .day], from: eom!),

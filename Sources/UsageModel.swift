@@ -136,10 +136,15 @@ final class UsageModel {
         billingAnchors[activeAccountID].flatMap { Self.nextMonthlyBilling(anchor: $0, from: Date()) }
     }
 
+    static let billingTimeZone = TimeZone(identifier: "UTC")!
+
     /// The next monthly anniversary of `anchor`'s day-of-month on/after `now`.
     /// Days past the end of a short month clamp to that month's last day.
+    /// Works in UTC: the billing day is the anchor's UTC date, so a subscription
+    /// started at 05:13Z on the 17th renews on the 17th, not the local 16th.
     static func nextMonthlyBilling(anchor: Date, from now: Date) -> Date? {
-        let cal = Calendar(identifier: .gregorian)
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = billingTimeZone
         let anchorDay = cal.component(.day, from: anchor)
         let base = cal.dateComponents([.year, .month], from: now)
         for offset in 0...12 {
@@ -308,6 +313,15 @@ final class UsageModel {
     @MainActor
     func finishOAuthSignIn(_ result: OAuthController.TokenResult) async {
         let email = await client.fetchAccount(token: result.accessToken)
+        // Signing in again as an existing account renews its sign-in rather
+        // than adding a duplicate.
+        if let email, let existing = accounts.first(where: { !$0.isPrimary && accountStore.email(for: $0.id) == email }) {
+            accountStore.replaceToken(for: existing.id, accessToken: result.accessToken,
+                                      refreshToken: result.refreshToken, expiresAt: result.expiresAt)
+            billingAnchors.removeValue(forKey: existing.id)
+            setActiveAccount(existing.id)
+            return
+        }
         let account = accountStore.add(label: email ?? "Claude",
                                        accessToken: result.accessToken,
                                        refreshToken: result.refreshToken,
