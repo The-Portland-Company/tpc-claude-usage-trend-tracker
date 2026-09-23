@@ -56,7 +56,7 @@ struct ClaudeUsageTrendTrackerApp: App {
                     if !started { started = true; model.start() }
                 }
         } label: {
-            MenuBarLabelView(items: model.menuBarItems, style: model.menuBarStyle)
+            MenuBarLabelView(items: model.menuBarItems, style: model.menuBarStyle, outdated: model.isOutdated)
         }
         .menuBarExtraStyle(.window)
 

@@ -78,6 +78,10 @@ machine except the QR the camera sees.
   { "v":1, "t":"<accessToken>", "r":"<refreshToken|null>",
     "e":<expiresAtMillis>, "s":["<scopes>"], "iat":<nowMillis> }
   ```
+- `r` is always `null`. Refresh tokens rotate, so sharing one lets whichever
+  device renews first revoke the other's copy (this silently signed the Mac
+  out). The phone gets a short-lived access token only and uses Sign in with
+  Claude for a lasting session.
 - The QR is shown only on demand and auto-hides after 60s (`iat` lets the phone
   reject stale payloads). Never persisted to disk; regenerated each time.
 - Render with a self-contained QR generator (no network).

@@ -57,6 +57,14 @@ final class UsageModel {
     private(set) var isRefreshing = false
     /// True when we could not fetch and are showing the last good snapshot.
     var isStale: Bool { lastError != nil && lastGoodAt != nil }
+    /// True when the numbers on screen are old enough that they may no longer
+    /// be true (several missed polls). The menu bar dims itself and shows a
+    /// warning glyph so a stuck reading never passes for a live one.
+    var isOutdated: Bool {
+        guard let last = lastGoodAt else { return false }
+        return Date().timeIntervalSince(last) > Self.outdatedAfter
+    }
+    static let outdatedAfter: TimeInterval = 30 * 60
     /// Last known weekly-all percent. A poll that momentarily lacks the weekly
     /// bucket must never make the menu bar jump to a different window (that was
     /// the "6% vs 24%" flip between the weekly and 5-hour limits).
@@ -377,8 +385,14 @@ final class UsageModel {
         }
         let now = Date()
         do {
-            let token = try await accountStore.resolveToken(for: id)
-            var snap = try await client.fetch(token: token)
+            var snap: UsageSnapshot
+            do {
+                snap = try await client.fetch(token: accountStore.resolveToken(for: id))
+            } catch UsageClient.Error.unauthorized where id != Account.primaryID {
+                // The token was rejected before its stored expiry (revoked, or
+                // rotated by another client). Renew once before giving up.
+                snap = try await client.fetch(token: accountStore.resolveToken(for: id, forceRefresh: true))
+            }
             // Guard against a stale switch: only apply if still the active account.
             guard id == activeAccountID else { return }
             if paceScale != 1 {
@@ -397,11 +411,14 @@ final class UsageModel {
             rebuild(from: snap, now: now)
         } catch {
             guard id == activeAccountID else { return }
-            lastError = Self.describe(error)
+            let usesClaudeCode = id == Account.primaryID
+            lastError = Self.describe(error, usesClaudeCode: usesClaudeCode)
             if let good = lastGoodAt, now.timeIntervalSince(good) > 2 * 3600, !staleNotified {
                 staleNotified = true
                 notifier.post(id: "stale", title: "Claude Usage Trend Tracker data is stale",
-                              body: "Open Claude Code once so it refreshes your sign-in, then Claude Usage Trend Tracker will catch up.")
+                              body: usesClaudeCode
+                                ? "Open Claude Code once so it refreshes your sign-in, then Claude Usage Trend Tracker will catch up."
+                                : "Your Claude sign-in stopped working. Open Claude Usage Trend Tracker and sign in again to resume updates.")
             }
             if let snap = snapshots[id] { rebuild(from: snap, now: now) }
         }
@@ -448,7 +465,10 @@ final class UsageModel {
         }
     }
 
-    static func describe(_ error: Error) -> String {
+    /// `usesClaudeCode` is true for the primary account, whose token comes from
+    /// Claude Code's Keychain item; added accounts hold their own sign-in, so
+    /// "open Claude Code" would not fix them.
+    static func describe(_ error: Error, usesClaudeCode: Bool = true) -> String {
         if let e = error as? AccountStore.TokenError {
             switch e {
             case .primaryUnavailable: return "Claude Code sign-in not found in Keychain."
@@ -464,7 +484,9 @@ final class UsageModel {
         }
         if let e = error as? UsageClient.Error {
             switch e {
-            case .unauthorized: return "Sign-in expired. Open Claude Code to refresh it."
+            case .unauthorized:
+                return usesClaudeCode ? "Sign-in expired. Open Claude Code to refresh it."
+                                      : "Sign-in expired — sign in again in Settings."
             case .http(let code): return "Anthropic returned HTTP \(code)."
             case .transport: return "No network."
             }

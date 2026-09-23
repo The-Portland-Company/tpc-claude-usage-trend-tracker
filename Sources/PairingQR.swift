@@ -28,9 +28,13 @@ enum PairingQR {
     static func build(accountStore: AccountStore, account: Account) throws -> (payload: PairingPayload, backupCode: String) {
         do {
             let creds = try accountStore.pairingCredentials(for: account.id)
+            // The refresh token is deliberately withheld. Refresh tokens rotate:
+            // whichever device renews first revokes the other's copy, which
+            // silently signed the Mac out once a paired phone renewed. The
+            // phone gets the access token only and signs in on its own later.
             let payload = PairingPayload(
                 t: creds.accessToken,
-                r: creds.refreshToken,
+                r: nil,
                 e: creds.expiresAt.map { $0.timeIntervalSince1970 * 1000 },
                 s: creds.scopes,
                 iat: Date().timeIntervalSince1970 * 1000)

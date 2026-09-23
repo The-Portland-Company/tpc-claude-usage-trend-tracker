@@ -20,7 +20,7 @@ struct PairingQRSheet: View {
             Text("Set up on your phone")
                 .font(.system(size: 15, weight: .semibold))
 
-            Text("Only scan this on a device you own — it transfers your Claude sign-in.")
+            Text("Only scan this on a device you own. It gives your phone a temporary sign-in that lasts a few hours. To stay signed in, use Sign in with Claude on the phone.")
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)

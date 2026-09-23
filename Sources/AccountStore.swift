@@ -139,7 +139,9 @@ final class AccountStore {
     /// The token to use for a given account. Primary reads Claude Code live;
     /// added accounts read the stored token and best-effort refresh it.
     /// Refresh failures surface as `.signInExpired`, never a crash.
-    func resolveToken(for id: String) async throws -> String {
+    /// `forceRefresh` renews even when the stored expiry hasn't passed, for a
+    /// token the server has already rejected.
+    func resolveToken(for id: String, forceRefresh: Bool = false) async throws -> String {
         if id == Account.primaryID {
             #if APPSTORE
             // No primary account in the sandboxed build.
@@ -153,7 +155,7 @@ final class AccountStore {
         }
         guard var token = AccountKeychain.load(for: id) else { throw TokenError.noToken }
         let expired = token.expiresAt.map { $0 <= Date() } ?? false
-        if !expired { return token.accessToken }
+        if !expired && !forceRefresh { return token.accessToken }
 
         // Expired: best-effort refresh. Non-fatal.
         guard let refreshToken = token.refreshToken,
