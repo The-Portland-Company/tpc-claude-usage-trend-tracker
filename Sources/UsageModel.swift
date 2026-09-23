@@ -124,7 +124,10 @@ final class UsageModel {
 
     /// Per-account subscription start date (`organization.subscription_created_at`
     /// from /oauth/profile). The monthly billing cycle anchors to its day.
-    private var billingAnchors: [String: Date] = [:]
+    /// Persisted so the date survives a sign-in that has since stopped working.
+    private var billingAnchors: [String: Date] = [:] {
+        didSet { defaults.set(billingAnchors.mapValues(\.timeIntervalSince1970), forKey: "billingAnchors") }
+    }
 
     /// The active account's next monthly billing date (the next occurrence of
     /// the subscription's day-of-month, today included). Nil until the profile
@@ -221,6 +224,9 @@ final class UsageModel {
         self.menuBarBucketIDs = defaults.stringArray(forKey: "menuBarBucketIDs") ?? ["weekly_all"]
         self.menuBarStyle = MenuBarStyle(rawValue: defaults.string(forKey: "menuBarStyle") ?? "") ?? .icon
         self.histories[Account.primaryID] = history
+        if let saved = defaults.dictionary(forKey: "billingAnchors") as? [String: Double] {
+            self.billingAnchors = saved.mapValues(Date.init(timeIntervalSince1970:))
+        }
         #if APPSTORE
         // The sandboxed build has no primary account. Purge any snapshot cached
         // by a previous Keychain-reading build so its stale usage numbers can
@@ -315,6 +321,7 @@ final class UsageModel {
         accountStore.remove(id: id)
         histories.removeValue(forKey: id)
         snapshots.removeValue(forKey: id)
+        billingAnchors.removeValue(forKey: id)
         defaults.removeObject(forKey: cacheKey(id))
         reloadAccounts()
         loadActiveFromCache(now: Date())
@@ -339,6 +346,47 @@ final class UsageModel {
                          refreshToken: (rt?.isEmpty ?? true) ? nil : rt,
                          expiresAt: nil, email: email)
         reloadAccounts()
+        return nil
+    }
+
+    /// Replace an added account's stored sign-in. A pasted access token is
+    /// validated against the usage API; with only a refresh token, it is
+    /// exchanged for a new access token. A blank refresh token keeps the stored
+    /// one. Returns nil on success or a human error string.
+    @MainActor
+    func updateTokens(id: String, accessToken: String, refreshToken: String) async -> String? {
+        let at = accessToken.trimmingCharacters(in: .whitespacesAndNewlines)
+        let rt = refreshToken.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !at.isEmpty || !rt.isEmpty else { return "Paste an access token or a refresh token." }
+        let previous = accountStore.storedToken(for: id)
+        let token: String
+        if at.isEmpty {
+            accountStore.replaceToken(for: id, accessToken: "", refreshToken: rt, expiresAt: .distantPast)
+            do {
+                token = try await accountStore.resolveToken(for: id, forceRefresh: true)
+            } catch {
+                if let previous { accountStore.restoreToken(previous, for: id) }
+                return "That refresh token didn't work."
+            }
+        } else {
+            do {
+                _ = try await client.fetch(token: at)
+            } catch {
+                return "That token didn't work: \(Self.describe(error, usesClaudeCode: false))"
+            }
+            accountStore.replaceToken(for: id, accessToken: at,
+                                      refreshToken: rt.isEmpty ? previous?.refreshToken : rt,
+                                      expiresAt: nil)
+            token = at
+        }
+        if let profile = await client.fetchProfile(token: token) {
+            if let email = profile.email { accountStore.setEmail(email, for: id) }
+            if let anchor = profile.subscriptionCreatedAt { billingAnchors[id] = anchor }
+        }
+        if id == activeAccountID {
+            account = accountStore.email(for: id)
+            await refresh()
+        }
         return nil
     }
 

@@ -11,6 +11,11 @@ struct SettingsView: View {
     @State private var isValidating = false
     @State private var errorText: String?
     @State private var showPairingSheet = false
+    @State private var editingID: String?
+    @State private var editAccess = ""
+    @State private var editRefresh = ""
+    @State private var isSaving = false
+    @State private var editError: String?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -133,6 +138,13 @@ struct SettingsView: View {
                         Text("Not removable")
                             .font(.system(size: 10)).foregroundStyle(.secondary)
                     } else {
+                        Button {
+                            startEditing(account.id)
+                        } label: {
+                            Image(systemName: "pencil").font(.system(size: 11))
+                        }
+                        .buttonStyle(.borderless)
+                        .help("Edit this account's tokens")
                         Button(role: .destructive) {
                             model.removeAccount(id: account.id)
                         } label: {
@@ -143,7 +155,64 @@ struct SettingsView: View {
                     }
                 }
                 .padding(.vertical, 3)
+                if editingID == account.id {
+                    editForm(for: account.id)
+                }
                 Divider()
+            }
+        }
+    }
+
+    // MARK: Edit tokens
+
+    private func editForm(for id: String) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            TextField("Access token", text: $editAccess)
+                .textFieldStyle(.roundedBorder)
+                .font(.system(size: 11).monospaced())
+            TextField("Refresh token", text: $editRefresh)
+                .textFieldStyle(.roundedBorder)
+                .font(.system(size: 11).monospaced())
+            Text("Paste either or both. A refresh token alone gets a new access token. Leave refresh blank to keep the current one.")
+                .font(.system(size: 10)).foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            if let editError {
+                Text(editError).font(.system(size: 11)).foregroundStyle(.red)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            HStack {
+                Spacer()
+                Button("Cancel") { editingID = nil }
+                Button {
+                    saveEdit(id)
+                } label: {
+                    if isSaving { ProgressView().controlSize(.small) } else { Text("Save") }
+                }
+                .disabled(isSaving || (editAccess.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                                       && editRefresh.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty))
+            }
+        }
+        .padding(.bottom, 4)
+    }
+
+    private func startEditing(_ id: String) {
+        editAccess = ""; editRefresh = ""; editError = nil
+        editingID = editingID == id ? nil : id
+    }
+
+    private func saveEdit(_ id: String) {
+        isSaving = true
+        editError = nil
+        let at = editAccess, rt = editRefresh
+        Task {
+            let result = await model.updateTokens(id: id, accessToken: at, refreshToken: rt)
+            await MainActor.run {
+                isSaving = false
+                if let result {
+                    editError = result
+                } else {
+                    editingID = nil; editAccess = ""; editRefresh = ""
+                }
             }
         }
     }

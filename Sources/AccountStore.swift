@@ -134,6 +134,16 @@ final class AccountStore {
         if activeAccountID == id { activeAccountID = Account.primaryID }
     }
 
+    // MARK: Token editing
+
+    func storedToken(for id: String) -> AccountToken? { AccountKeychain.load(for: id) }
+
+    func replaceToken(for id: String, accessToken: String, refreshToken: String?, expiresAt: Date?) {
+        AccountKeychain.save(AccountToken(accessToken: accessToken, refreshToken: refreshToken, expiresAt: expiresAt), for: id)
+    }
+
+    func restoreToken(_ token: AccountToken, for id: String) { AccountKeychain.save(token, for: id) }
+
     // MARK: Token resolution
 
     /// The token to use for a given account. Primary reads Claude Code live;
